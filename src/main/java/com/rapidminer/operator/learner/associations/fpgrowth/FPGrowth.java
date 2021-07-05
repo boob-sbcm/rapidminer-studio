@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -91,7 +91,9 @@ import com.rapidminer.tools.Ontology;
  * </p>
  *
  * @author Sebastian Land, Ingo Mierswa, Marius Helf
+ * @deprecated since 8.2, replaced by the BeltFPGrowth in the Concurrency extension
  */
+@Deprecated
 public class FPGrowth extends Operator {
 
 	/**

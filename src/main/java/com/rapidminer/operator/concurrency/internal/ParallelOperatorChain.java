@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -19,6 +19,7 @@
 package com.rapidminer.operator.concurrency.internal;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import com.rapidminer.example.ExampleSet;
@@ -28,9 +29,11 @@ import com.rapidminer.operator.IOObject;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorChain;
 import com.rapidminer.operator.OperatorDescription;
+import com.rapidminer.operator.OperatorVersion;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeBoolean;
 import com.rapidminer.parameter.UndefinedParameterError;
+import com.rapidminer.studio.internal.Resources;
 
 
 /**
@@ -42,6 +45,9 @@ import com.rapidminer.parameter.UndefinedParameterError;
  *
  */
 public abstract class ParallelOperatorChain extends OperatorChain {
+
+	/** Last version which synchronized remembered data only in special iterations (in most cases the last iteration). */
+	public static final OperatorVersion DOES_NOT_ALWAYS_SYNCHRONIZE_REMEMBERED_DATA = new OperatorVersion(8, 2, 0);
 
 	private static String PARAMETER_ENABLE_PARALLEL_EXECUTION = "enable_parallel_execution";
 
@@ -57,6 +63,10 @@ public abstract class ParallelOperatorChain extends OperatorChain {
 	 * @return
 	 */
 	protected boolean checkParallelizability() {
+		if(Resources.getConcurrencyContext(this).getParallelism() == 1) {
+			return false;
+		}
+
 		boolean executeParallely = getParameterAsBoolean(PARAMETER_ENABLE_PARALLEL_EXECUTION);
 		if (executeParallely) {
 			// now check if there's a break point. Then we switch back to serial as well.
@@ -98,7 +108,7 @@ public abstract class ParallelOperatorChain extends OperatorChain {
 	 * depends on the second parameter. If requested, ExampleSets are checked for their
 	 * thread-safety and materialized if necessary.
 	 *
-	 * @param inputData
+	 * @param input
 	 * @param materializeUnsafeExampleSets
 	 *            if {@code true}, ExampleSets that are not thread-safe are materialized
 	 * @return
@@ -127,4 +137,14 @@ public abstract class ParallelOperatorChain extends OperatorChain {
 
 		return types;
 	}
+
+	@Override
+	public OperatorVersion[] getIncompatibleVersionChanges() {
+		OperatorVersion[] incompatibleVersions = super.getIncompatibleVersionChanges();
+		OperatorVersion[] extendedIncompatibleVersions = Arrays.copyOf(incompatibleVersions,
+				incompatibleVersions.length + 1);
+		extendedIncompatibleVersions[incompatibleVersions.length] = DOES_NOT_ALWAYS_SYNCHRONIZE_REMEMBERED_DATA;
+		return extendedIncompatibleVersions;
+	}
+
 }

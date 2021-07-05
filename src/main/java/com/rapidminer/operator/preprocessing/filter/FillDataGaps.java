@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -267,6 +267,9 @@ public class FillDataGaps extends AbstractExampleSetProcessing {
 
 		// sort final result
 		resultSet = sorting.apply(resultSet);
+
+		resultSet.getAnnotations().addAll(inputSet.getAnnotations());
+		resultSet.setAllUserData(inputSet.getAllUserData());
 
 		return resultSet;
 	}

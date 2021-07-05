@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -56,8 +56,9 @@ import com.rapidminer.tools.I18N;
  * line).
  * 
  * @author Marco Boeck
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class EditParallelLineDialog extends JDialog {
 
 	/** the ok {@link JButton} */
@@ -143,7 +144,7 @@ public class EditParallelLineDialog extends JDialog {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				createLineColorDialog();
 			}
 		});

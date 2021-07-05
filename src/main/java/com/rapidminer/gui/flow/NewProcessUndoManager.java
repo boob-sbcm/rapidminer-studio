@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -22,7 +22,10 @@ import java.awt.Point;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.rapidminer.Process;
@@ -44,6 +47,17 @@ import com.rapidminer.tools.XMLException;
  */
 public class NewProcessUndoManager {
 
+	/** Regex to filter operator's height attribute from XML */
+	private static final Pattern REGEX_OPERATOR_PATTERN = Pattern.compile("(?i)(<operator.*?)(height=\"\\d+\"\\s)");
+	private static final String REGEX_OPERATOR_REPLACEMENT = "$1";
+
+	/** Comparator for process XMLs, ignoring height attributes of operators */
+	private static final Comparator<String> XML_COMPARE_WIHOUT_HEIGHT = (a, b) -> {
+		a = REGEX_OPERATOR_PATTERN.matcher(a).replaceAll(REGEX_OPERATOR_REPLACEMENT);
+		b = REGEX_OPERATOR_PATTERN.matcher(b).replaceAll(REGEX_OPERATOR_REPLACEMENT);
+		return a.compareTo(b);
+	};
+
 	/**
 	 * Simple storage construct for a {@link Process} state.
 	 *
@@ -52,10 +66,10 @@ public class NewProcessUndoManager {
 	 */
 	private static class ProcessUndoState {
 
-		String processXML;
-		String displayedChain;
-		List<String> selectedOperators;
-		List<String> viewUserData;
+		private String processXML;
+		private String displayedChain;
+		private List<String> selectedOperators;
+		private List<String> viewUserData;
 
 	}
 
@@ -108,7 +122,8 @@ public class NewProcessUndoManager {
 	public boolean snapshotDiffers() {
 		ProcessUndoState last = lastSnapshot;
 		ProcessUndoState current = snapshot;
-		return last != null && last != current && !last.processXML.equals(current.processXML);
+		return last != null && last != current
+				&& XML_COMPARE_WIHOUT_HEIGHT.compare(last.processXML, current.processXML) != 0;
 	}
 
 	/**
@@ -124,7 +139,6 @@ public class NewProcessUndoManager {
 	 */
 	public boolean add(boolean useCurrent) {
 		ProcessUndoState state = useCurrent ? snapshot : lastSnapshot;
-		// ProcessUndoState state = lastSnapshot;
 		if (state != null && state.processXML != null) {
 			undoList.add(state);
 			return true;
@@ -145,7 +159,7 @@ public class NewProcessUndoManager {
 		ProcessUndoState state = new ProcessUndoState();
 		state.processXML = processXML;
 		state.displayedChain = displayedChain == null ? null : displayedChain.getName();
-		state.selectedOperators = selectedOperators.stream().map(op -> op.getName()).collect(Collectors.toList());
+		state.selectedOperators = selectedOperators.stream().map(Operator::getName).collect(Collectors.toList());
 		state.viewUserData = extractUserData(allOperators);
 		lastSnapshot = snapshot;
 		snapshot = state;
@@ -159,7 +173,7 @@ public class NewProcessUndoManager {
 	/**
 	 * Restores a {@link Process} from the given undo index if possible, setting the user data from
 	 * the stored state. May skip unreadable user data. Throws an Exception if an error occurs while
-	 * parsing the XML string ({@link Process#Process(String)}).
+	 * parsing the XML string ({@link Process#Process(String, String)}).
 	 *
 	 * @return the restored process or null if the index is invalid
 	 *
@@ -171,7 +185,7 @@ public class NewProcessUndoManager {
 		} catch (IndexOutOfBoundsException e) {
 			return null;
 		}
-		Process p = new Process(state.processXML);
+		Process p = new Process(state.processXML, Process.NO_ENCRYPTION);
 		if (state.viewUserData == null) {
 			return p;
 		}
@@ -206,8 +220,7 @@ public class NewProcessUndoManager {
 		} catch (IndexOutOfBoundsException e) {
 			return null;
 		}
-		List<Operator> selected = state.selectedOperators.stream().map(p::getOperator).filter(op -> op != null)
-				.collect(Collectors.toList());
+		List<Operator> selected = state.selectedOperators.stream().map(p::getOperator).filter(Objects::nonNull).collect(Collectors.toList());
 		return selected.isEmpty() ? null : selected;
 	}
 

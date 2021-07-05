@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -28,7 +28,7 @@ import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Attributes;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.SimpleAttributes;
-import com.rapidminer.example.set.SimpleExampleSet;
+import com.rapidminer.example.set.AbstractExampleSet;
 import com.rapidminer.example.table.BinominalAttribute;
 import com.rapidminer.example.table.DateAttribute;
 import com.rapidminer.example.table.ExampleTable;
@@ -53,7 +53,6 @@ public final class ExampleSets {
 	/** Set of primitive attribute types that are known to be thread safe for read accesses. */
 	private static final Set<Class<? extends Attribute>> SAFE_ATTRIBUTES = new HashSet<>(5);
 	static {
-		SAFE_ATTRIBUTES.add(DateAttribute.class);
 		SAFE_ATTRIBUTES.add(BinominalAttribute.class);
 		SAFE_ATTRIBUTES.add(PolynominalAttribute.class);
 		SAFE_ATTRIBUTES.add(DateAttribute.class);
@@ -141,22 +140,24 @@ public final class ExampleSets {
 		if (set == null) {
 			throw new IllegalArgumentException("Example set must not be null");
 		}
-		
-		boolean foundUnsafeComponent = false;
+
+		// search for unsafe components
+		boolean foundUnsafeComponent;
 		
 		// check example set implementation
-		foundUnsafeComponent |= set.getClass() != SimpleExampleSet.class;
+		boolean threadSafeView = set instanceof AbstractExampleSet && ((AbstractExampleSet) set).isThreadSafeView();
+		foundUnsafeComponent = !threadSafeView;
 		
 		// check example table implementation
 		if (!foundUnsafeComponent) {
 			ExampleTable table = set.getExampleTable();
-			foundUnsafeComponent |= table.getClass() != ColumnarExampleTable.class;
+			foundUnsafeComponent = table.getClass() != ColumnarExampleTable.class;
 		}
 		
 		// check attribute implementation
 		if (!foundUnsafeComponent) {
 			Attributes attributes = set.getAttributes();
-			foundUnsafeComponent |= attributes.getClass() != SimpleAttributes.class;
+			foundUnsafeComponent = attributes.getClass() != SimpleAttributes.class;
 		}
 		
 		// check individual attributes and attribute transformations

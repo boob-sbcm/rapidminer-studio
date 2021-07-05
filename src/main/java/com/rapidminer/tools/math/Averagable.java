@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -21,6 +21,7 @@ package com.rapidminer.tools.math;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
+import com.rapidminer.operator.IOObject;
 import com.rapidminer.operator.ResultObjectAdapter;
 import com.rapidminer.report.Readable;
 import com.rapidminer.tools.Tools;
@@ -101,7 +102,7 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 	// ================================================================================
 
 	/**
-	 * This method builds the makro average of two averagables of the same type. First this method
+	 * This method builds the macro average of two averagables of the same type. First this method
 	 * checks if the classes of <code>this</code> and <code>performance</code> are the same and if
 	 * the {@link #getName()} methods return the same String. Otherwise a RuntimeException is
 	 * thrown. <br>
@@ -109,7 +110,7 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 	 * its square is added to {@link #meanSquaredSum} and {@link #averageCount} is increased by one.
 	 * These values are used in the {@link #getMakroAverage()} and {@link #getMakroVariance()}
 	 * methods. <br>
-	 * Subclasses should implement the method buildSingleAverage() to build the mikro (weighted)
+	 * Subclasses should implement the method buildSingleAverage() to build the micro (weighted)
 	 * average of <code>this</code> averagable and the given <code>averagable</code>. They must be
 	 * weighted by the number of examples used for calculating the averagables.
 	 */
@@ -138,7 +139,7 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 	}
 
 	/**
-	 * This method returns the makro average if it was defined and the mikro average (the current
+	 * This method returns the macro average if it was defined and the micro average (the current
 	 * value) otherwise. This method should be used instead of {@link #getMikroAverage()} for
 	 * optimization purposes, i.e. by methods like <code>getFitness()</code> of performance
 	 * criteria.
@@ -155,7 +156,7 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 	}
 
 	/**
-	 * This method returns the makro variance if it was defined and the mikro variance otherwise.
+	 * This method returns the macro variance if it was defined and the micro variance otherwise.
 	 */
 	public final double getVariance() {
 		double variance = Double.NaN;
@@ -169,7 +170,7 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 	}
 
 	/**
-	 * This method returns the makro standard deviation if it was defined and the mikro standard
+	 * This method returns the macro standard deviation if it was defined and the micro standard
 	 * deviation otherwise.
 	 */
 	public final double getStandardDeviation() {
@@ -208,15 +209,16 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 	 * {@link #buildAverage(Averagable)} method.
 	 */
 	public final double getMakroVariance() {
-		double mean = getMakroAverage();
-		double result = meanSquaredSum / averageCount - mean * mean;
-		if (Double.isNaN(result)) {
+		if (averageCount < 2) {
 			return Double.NaN;
-		} else if (result < 0.0d) {
-			return 0.0d;
-		} else {
-			return result;
 		}
+		double besselsCorrection = averageCount / (averageCount - 1.0d);
+		double biasedVariance = meanSquaredSum / averageCount - Math.pow(getMakroAverage(), 2);
+		double unbiasedVariance = besselsCorrection * biasedVariance;
+		if (unbiasedVariance < 0.0d) {
+			return 0.0d;
+		}
+		return unbiasedVariance;
 	}
 
 	/**
@@ -238,17 +240,26 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 		try {
 			Class<? extends Averagable> clazz = this.getClass();
 			Constructor<? extends Averagable> cloneConstructor = clazz.getConstructor(clazz);
-			Averagable result = cloneConstructor.newInstance(this);
-			return result;
+			return cloneConstructor.newInstance(this);
 		} catch (IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
 			throw new CloneNotSupportedException("Cannot clone averagable: " + e.getMessage());
+		}
+	}
+
+	/** @since 9.7 */
+	@Override
+	public IOObject copy() {
+		try {
+			return (IOObject) clone();
+		} catch (CloneNotSupportedException e) {
+			return this;
 		}
 	}
 
 	// ================================================================================
 
 	/**
-	 * Indicates wether or not percentage format should be used in the {@link #toString} method. The
+	 * Indicates whether or not percentage format should be used in the {@link #toString} method. The
 	 * default implementation returns false.
 	 */
 	public boolean formatPercent() {
@@ -302,7 +313,7 @@ public abstract class Averagable extends ResultObjectAdapter implements Cloneabl
 		}
 
 		if (makroUsable) {
-			result.append(" (mikro: ");
+			result.append(" (micro average: ");
 		}
 
 		result.append(formatValue(getMikroAverage()));

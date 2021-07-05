@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -96,14 +96,8 @@ public class PolynominalClassificationPerformanceEvaluator extends AbstractPerfo
 
 	@Override
 	protected void checkCompatibility(ExampleSet exampleSet) throws OperatorException {
-		Tools.isLabelled(exampleSet);
 		Tools.isNonEmpty(exampleSet);
-
-		Attribute label = exampleSet.getAttributes().getLabel();
-		if (!label.isNominal()) {
-			throw new UserError(this, 101, "the calculation of performance criteria for classification tasks",
-					label.getName());
-		}
+		Tools.hasNominalLabels(exampleSet, "the calculation of performance criteria for classification tasks");
 	}
 
 	@Override

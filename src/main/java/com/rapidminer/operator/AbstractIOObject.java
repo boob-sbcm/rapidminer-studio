@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,12 +18,6 @@
 */
 package com.rapidminer.operator;
 
-import com.rapidminer.operator.ports.OutputPort;
-import com.rapidminer.operator.ports.ProcessingStep;
-import com.rapidminer.tools.LogService;
-import com.rapidminer.tools.LoggingHandler;
-import com.rapidminer.tools.XMLSerialization;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,10 +25,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.OutputStream;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.GZIPInputStream;
+
+import com.rapidminer.operator.ports.OutputPort;
+import com.rapidminer.operator.ports.ProcessingStep;
+import com.rapidminer.tools.LogService;
+import com.rapidminer.tools.LoggingHandler;
+import com.rapidminer.tools.XMLSerialization;
 
 
 /**
@@ -73,14 +75,14 @@ public abstract class AbstractIOObject implements IOObject {
 
 	@Override
 	public void appendOperatorToHistory(Operator operator, OutputPort port) {
+		if (operator.getProcess() == null) {
+			return;
+		}
 		if (processingHistory == null) {
 			processingHistory = new LinkedList<>();
-			if (operator.getProcess() != null) {
-				processingHistory.add(new ProcessingStep(operator, port));
-			}
 		}
 		ProcessingStep newStep = new ProcessingStep(operator, port);
-		if (operator.getProcess() != null && (processingHistory.isEmpty() || !processingHistory.getLast().equals(newStep))) {
+		if (processingHistory.isEmpty() || !processingHistory.getLast().equals(newStep)) {
 			processingHistory.add(newStep);
 		}
 	}
@@ -159,7 +161,23 @@ public abstract class AbstractIOObject implements IOObject {
 
 	@Override
 	public Object setUserData(String key, Object value) {
+		if (userData == null) {
+			userData = new HashMap<>();
+		}
 		return userData.put(key, value);
+	}
+
+	@Override
+	public Map<String, Object> getAllUserData() {
+		if (userData == null) {
+			return Collections.emptyMap();
+		}
+		return Collections.unmodifiableMap(userData);
+	}
+
+	@Override
+	public void setAllUserData(Map<String, Object> userDataMap) {
+		userData.putAll(userDataMap);
 	}
 
 	/**
@@ -170,7 +188,7 @@ public abstract class AbstractIOObject implements IOObject {
 	 *             if any IO error occurs.
 	 * @throws IllegalStateException
 	 *             if {@link XMLSerialization#init(ClassLoader)} has never been called.
-	 * @deprecated Use {@link #read(InputStreamProvider, String)} to be able to read all formats
+	 * @deprecated Use {@link #read(InputStreamProvider)} to be able to read all formats
 	 *             (xml zipped/not zipped and binary)
 	 */
 	@Deprecated
@@ -190,23 +208,11 @@ public abstract class AbstractIOObject implements IOObject {
 	}
 
 	public static IOObject read(final File file) throws IOException {
-		return read(new InputStreamProvider() {
-
-			@Override
-			public InputStream getInputStream() throws IOException {
-				return new FileInputStream(file);
-			}
-		});
+		return read(() -> new FileInputStream(file));
 	}
 
 	public static IOObject read(final byte[] buf) throws IOException {
-		return read(new InputStreamProvider() {
-
-			@Override
-			public InputStream getInputStream() throws IOException {
-				return new ByteArrayInputStream(buf);
-			}
-		});
+		return read(() -> new ByteArrayInputStream(buf));
 	}
 
 	public static IOObject read(InputStreamProvider inProvider) throws IOException {

@@ -1,25 +1,26 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.look;
 
 import java.awt.Color;
 import java.awt.Font;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
@@ -41,6 +42,7 @@ import com.rapidminer.gui.look.borders.Borders;
 import com.rapidminer.gui.look.icons.IconFactory;
 import com.rapidminer.gui.tools.ScaledImageIcon;
 import com.rapidminer.gui.tools.SwingTools;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.SystemInfoUtilities;
 import com.rapidminer.tools.SystemInfoUtilities.OperatingSystem;
 
@@ -56,6 +58,17 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 
 	/** the radius of RoundedRect corners */
 	public static final int CORNER_DEFAULT_RADIUS = 5;
+
+	/** the radius for tabs on the welcome dialog (since 8.2) */
+	public static final int CORNER_START_TAB_RADIUS = 8;
+	/** the space between tabs for the welcome dialog (since 8.2) */
+	public static final int START_TAB_GAP = 20;
+	/** the indentation fro the first tab of the welcome dialog (since 8.2) */
+	public static final int START_TAB_INDENT = 8;
+	/** top gap for the welcome dialog (since 8.2) */
+	public static final int START_DIALOG_TOP_GAP = 10;
+	/** set this client property to true for the tabbed pane in the welcome dialog (since 8.2) */
+	public static final String START_DIALOG_INDICATOR_PROPERTY = "com.rapidminer.StartDialog";
 
 	/** the radius of RoundedRect corners for tabs */
 	public static final int CORNER_TAB_RADIUS = 5;
@@ -105,7 +118,7 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 		// enables AntiAliasing if AntiAliasing is enabled in the OS
 		// EXCEPT for key "Menu.opaque" which will glitch out JMenues
 		UIDefaults lookAndFeelDefaults = UIManager.getLookAndFeelDefaults();
-		Hashtable<Object, Object> copy = new Hashtable<>(lookAndFeelDefaults);
+		Hashtable<Object, Object> copy = new Hashtable<>(lookAndFeelDefaults != null ? lookAndFeelDefaults : Collections.emptyMap());
 		for (Object key : copy.keySet()) {
 			if (!String.valueOf(key).equals("Menu.opaque")) {
 				table.put(key, lookAndFeelDefaults.get(key));
@@ -319,7 +332,7 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 				new UIDefaults.LazyInputMap(
 						new Object[] { "ESCAPE", "cancelSelection", "BACK_SPACE", "Go Up", "ENTER", "approveSelection" }),
 				// InternalFrame
-				"InternalFrame.titleFont", new FontUIResource("Dialog", 1, 12), "InternalFrame.activeTitleForeground",
+				"InternalFrame.titleFont", new FontUIResource(FontTools.getFont(Font.DIALOG, 1, 12)), "InternalFrame.activeTitleForeground",
 				Colors.TEXT_FOREGROUND, "InternalFrame.inactiveTitleForeground", Colors.TEXT_FOREGROUND,
 				"InternalFrame.closeIcon", SwingTools.createImage("plaf/close_icon.png"), "InternalFrame.rolloverCloseIcon",
 				SwingTools.createImage("plaf/armed_close_icon.png"), "InternalFrame.maximizeIcon",
@@ -364,7 +377,7 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 						"PAGE_DOWN", "scrollDown", "shift PAGE_DOWN", "scrollDownExtendSelection", CONTROL_ID + " A",
 						"selectAll", CONTROL_ID + " SLASH", "selectAll", CONTROL_ID + " BACK_SLASH", "clearSelection" }),
 				// MenuBar
-				"MenuBar.font", fontDialog12, "MenuBar.windowBindings", new Object[] { "F10", "takeFocus" }
+				"MenuBar.font", fontDialog12, "MenuBar.windowBindings", new Object[] {}
 
 				, "MenuBar.selectionForeground", Colors.TEXT_HIGHLIGHT_FOREGROUND,
 				// Menu Item
@@ -437,7 +450,7 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 				new UIDefaults.LazyInputMap(new Object[] { "UP", "negativeIncrement", "DOWN", "positiveIncrement", "LEFT",
 						"negativeIncrement", "RIGHT", "positiveIncrement", "KP_UP", "negativeIncrement", "KP_DOWN",
 						"positiveIncrement", "KP_LEFT", "negativeIncrement", "KP_RIGHT", "positiveIncrement", "HOME",
-						"selectMin", "END", "selectMax", "F8", "startResize", "F6", "toggleFocus", CONTROL_ID + " TAB",
+						"selectMin", "END", "selectMax", "HOME", "toggleFocus", CONTROL_ID + " TAB",
 						"focusOutForward", CONTROL_ID + " shift TAB", "focusOutBackward" }),
 
 				"SplitPaneDivider.border", null,
@@ -479,6 +492,17 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 						"startEditing" }),
 				// TableHeader
 				"TableHeader.font", fontDialog12Bold, "TableHeader.background", Colors.PANEL_BACKGROUND,
+				// JXTaskPane
+				"TaskPane.background", Colors.WINDOW_BACKGROUND,
+				"TaskPane.specialTitleBackground", Colors.PANEL_BACKGROUND,
+				"TaskPane.titleBackgroundGradientStart", Colors.PANEL_BACKGROUND,
+				"TaskPane.titleBackgroundGradientEnd", Colors.PANEL_BACKGROUND,
+				"TaskPane.borderColor", Colors.PANEL_BACKGROUND,
+				"TaskPane.titleOver", Colors.RAPIDMINER_ORANGE,
+				"TaskPane.specialTitleOver", Colors.RAPIDMINER_ORANGE,
+				"TaskPane.foreground", Colors.BLACK,
+				"TaskPane.titleForeground", Colors.BLACK,
+				"TaskPane.specialTitleForeground", Colors.BLACK,
 				// TextField
 				"TextField.margin", textFieldMargin, "TextField.font", fontDialog12, "TextField.caretForeground", caretColor,
 				"TextField.focusInputMap", fieldInputMap, "TextField.background", Colors.WHITE, "FormattedTextField.margin",
@@ -572,7 +596,9 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 		Object[] uiDefaults = { "SpinnerUI", "com.rapidminer.gui.look.ui.SpinnerUI", "FileChooserUI",
 				"com.rapidminer.gui.look.fc.FileChooserUI", "ToolBarUI", "com.rapidminer.gui.look.ui.ToolBarUI",
 				"DesktopIconUI", "com.rapidminer.gui.look.ui.DesktopIconUI", "SliderUI",
-				"com.rapidminer.gui.look.ui.SliderUI", "CheckBoxUI", "com.rapidminer.gui.look.ui.CheckBoxUI", "ComboBoxUI",
+				"com.rapidminer.gui.look.ui.SliderUI", "LinearGradientColorSliderUI", "com.rapidminer.gui.tools.color.LinearGradientColorSliderUI",
+				"DistinctColorSliderUI", "com.rapidminer.gui.tools.color.DistinctColorSliderUI",
+				"CheckBoxUI", "com.rapidminer.gui.look.ui.CheckBoxUI", "ComboBoxUI",
 				"com.rapidminer.gui.look.ui.ComboBoxUI", "RadioButtonUI", "com.rapidminer.gui.look.ui.RadioButtonUI",
 				"TextFieldUI", "com.rapidminer.gui.look.ui.TextFieldUI", "FormattedTextFieldUI",
 				"com.rapidminer.gui.look.ui.FormattedTextFieldUI", "PasswordFieldUI",
@@ -730,11 +756,11 @@ public class RapidLookAndFeel extends BasicLookAndFeel {
 	}
 
 	public static FontUIResource getMainFont() {
-		return new FontUIResource("Dialog", 0, 12);
+		return new FontUIResource(FontTools.getFont(Font.DIALOG, 0, 12));
 	}
 
 	public static FontUIResource getTextfieldFont() {
-		return new FontUIResource("Dialog", 0, 12);
+		return new FontUIResource(FontTools.getFont(Font.DIALOG, 0, 12));
 	}
 
 	public ColorUIResource getTextHighlightColor() {

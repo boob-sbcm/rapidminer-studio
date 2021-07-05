@@ -1,22 +1,26 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.operator;
+
+import static com.rapidminer.repository.RepositoryLocation.REPOSITORY_PREFIX;
+import static com.rapidminer.repository.RepositoryLocation.SEPARATOR;
+import static com.rapidminer.repository.RepositoryLocation.isConnectionPath;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -29,15 +33,18 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
+import java.util.stream.Stream;
 import javax.xml.transform.stream.StreamResult;
 
 import org.w3c.dom.Document;
@@ -47,6 +54,7 @@ import com.rapidminer.BreakpointListener;
 import com.rapidminer.MacroHandler;
 import com.rapidminer.Process;
 import com.rapidminer.RapidMiner;
+import com.rapidminer.belt.execution.ExecutionAbortedException;
 import com.rapidminer.gui.tools.VersionNumber;
 import com.rapidminer.gui.wizards.ConfigurationListener;
 import com.rapidminer.gui.wizards.PreviewListener;
@@ -56,6 +64,8 @@ import com.rapidminer.io.process.XMLTools;
 import com.rapidminer.operator.ProcessSetupError.Severity;
 import com.rapidminer.operator.annotation.ResourceConsumer;
 import com.rapidminer.operator.annotation.ResourceConsumptionEstimator;
+import com.rapidminer.operator.nio.model.AbstractDataResultSetReader;
+import com.rapidminer.operator.ports.DeliveringPortManager;
 import com.rapidminer.operator.ports.InputPort;
 import com.rapidminer.operator.ports.InputPorts;
 import com.rapidminer.operator.ports.OutputPort;
@@ -70,15 +80,17 @@ import com.rapidminer.operator.ports.metadata.MDTransformer;
 import com.rapidminer.operator.ports.metadata.MetaData;
 import com.rapidminer.operator.ports.metadata.MetaDataError;
 import com.rapidminer.operator.ports.metadata.Precondition;
-import com.rapidminer.operator.ports.quickfix.ParameterSettingQuickFix;
 import com.rapidminer.operator.ports.quickfix.QuickFix;
 import com.rapidminer.operator.ports.quickfix.RelativizeRepositoryLocationQuickfix;
+import com.rapidminer.operator.preprocessing.filter.AbstractDateDataProcessing;
+import com.rapidminer.parameter.CombinedParameterType;
 import com.rapidminer.parameter.ParameterHandler;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeAttribute;
 import com.rapidminer.parameter.ParameterTypeBoolean;
 import com.rapidminer.parameter.ParameterTypeCategory;
 import com.rapidminer.parameter.ParameterTypeDate;
+import com.rapidminer.parameter.ParameterTypeDateFormat;
 import com.rapidminer.parameter.ParameterTypeInnerOperator;
 import com.rapidminer.parameter.ParameterTypeList;
 import com.rapidminer.parameter.ParameterTypeRepositoryLocation;
@@ -86,7 +98,9 @@ import com.rapidminer.parameter.ParameterTypeTupel;
 import com.rapidminer.parameter.Parameters;
 import com.rapidminer.parameter.UndefinedMacroError;
 import com.rapidminer.parameter.UndefinedParameterError;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationType;
 import com.rapidminer.repository.RepositoryManager;
 import com.rapidminer.studio.internal.ProcessStoppedRuntimeException;
 import com.rapidminer.tools.AbstractObservable;
@@ -102,6 +116,7 @@ import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.WebServiceTools;
 import com.rapidminer.tools.WrapperLoggingHandler;
 import com.rapidminer.tools.XMLException;
+import com.rapidminer.tools.encryption.EncryptionProvider;
 import com.rapidminer.tools.io.Encoding;
 import com.rapidminer.tools.math.StringToMatrixConverter;
 import com.rapidminer.tools.patterns.Visitor;
@@ -150,7 +165,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 
 	private static final boolean CPU_TIME_SUPPORTED = ManagementFactory.getThreadMXBean().isThreadCpuTimeSupported();
 
-	private static final OperatorVersion[] EMPTY_OPERATOR_VERSIONS_ARRAY = new OperatorVersion[0];
+	public static final OperatorVersion[] EMPTY_OPERATOR_VERSIONS_ARRAY = new OperatorVersion[0];
 
 	private static final OperatorVersion THROW_ERROR_ON_UNDEFINED_MACRO = new OperatorVersion(6, 0, 3);
 
@@ -394,19 +409,6 @@ public abstract class Operator extends AbstractObservable<Operator>
 	}
 
 	/**
-	 * Returns the experiment (process) of this operator by asking the parent operator. If the
-	 * operator itself and all of its parents are not part of an process, this method will return
-	 * null. Please note that some operators (e.g. ProcessLog) must be part of an process in order
-	 * to work properly.
-	 *
-	 * @deprecated Please use {@link #getProcess()} instead
-	 */
-	@Deprecated
-	public Process getExperiment() {
-		return getProcess();
-	}
-
-	/**
 	 * Returns the process of this operator by asking the parent operator. If the operator itself
 	 * and all of its parents are not part of an process, this method will return null. Please note
 	 * that some operators (e.g. ProcessLog) must be part of an process in order to work properly.
@@ -502,7 +504,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * Sets the user specified comment for this operator.
 	 *
 	 * @deprecated use
-	 *             {@link com.rapidminer.io.process.GUIProcessXMLFilter#addOperatorAnnotation(Operator, com.rapidminer.gui.flow.processrendering.annotations.WorkflowAnnotation)}
+	 *             {@link com.rapidminer.io.process.GUIProcessXMLFilter#addOperatorAnnotation(com.rapidminer.gui.flow.processrendering.annotations.model.OperatorAnnotation)}
 	 *             instead! Calling this method will do nothing anymore.
 	 */
 	@Deprecated
@@ -514,8 +516,8 @@ public abstract class Operator extends AbstractObservable<Operator>
 	/**
 	 * Looks up {@link UserData} entries. Returns null if key is unknown.
 	 *
-	 * @param The
-	 *            key of the user data.
+	 * @param key
+	 * 		The key of the user data.
 	 * @return The user data.
 	 */
 	public UserData<Object> getUserData(String key) {
@@ -549,7 +551,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * The user specified comment for this operator.
 	 *
 	 * @deprecated use
-	 *             {@link com.rapidminer.io.processGUIProcessXMLFilter#lookupOperatorAnnotations(Operator)}
+	 *             {@link com.rapidminer.io.process.GUIProcessXMLFilter#lookupOperatorAnnotations(Operator)}
 	 *             instead! This method will always return {@code null}.
 	 */
 	@Deprecated
@@ -667,7 +669,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 *            This parameter is not longer used.
 	 */
 	public Operator cloneOperator(String name, boolean forParallelExecution) {
-		Operator clone = null;
+		Operator clone;
 		try {
 			clone = operatorDescription.createOperatorInstance();
 		} catch (Exception e) {
@@ -675,19 +677,13 @@ public abstract class Operator extends AbstractObservable<Operator>
 			throw new RuntimeException("Can not create clone of operator '" + getName(), e);
 		}
 		clone.setName(getName());
-		clone.breakPoint = new boolean[] { breakPoint[0], breakPoint[1] };
+		clone.breakPoint = new boolean[]{breakPoint[0], breakPoint[1]};
 		clone.enabled = enabled;
 		clone.expanded = expanded;
 
 		// copy user data entries
 		if (this.userData != null) {
-			for (String key : this.userData.keySet()) {
-				UserData<Object> data = this.userData.get(key);
-				if (data != null) {
-					data = data.copyUserData(clone);
-					clone.setUserData(key, data);
-				}
-			}
+			this.userData.forEach((k, data) -> {if (data != null) clone.setUserData(k, data.copyUserData(clone));});
 		}
 
 		if (forParallelExecution) {
@@ -855,57 +851,81 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * user. Returns the total number of errors.
 	 */
 	public int checkProperties() {
+		if (!isEnabled()) {
+			return 0;
+		}
 		int errorCount = 0;
-		if (isEnabled()) {
-			Iterator<ParameterType> i = getParameters().getParameterTypes().iterator();
-			while (i.hasNext()) {
-				ParameterType type = i.next();
-				boolean optional = type.isOptional();
-				if (!optional) {
-					boolean parameterSet = getParameters().isSet(type.getKey());
-					if (type.getDefaultValue() == null && !parameterSet) {
-						addError(new SimpleProcessSetupError(Severity.ERROR, portOwner,
-								Collections.singletonList(new ParameterSettingQuickFix(this, type.getKey())),
-								"undefined_parameter", new Object[] { type.getKey().replace('_', ' ') }));
-						errorCount++;
-					} else if (type instanceof ParameterTypeAttribute && parameterSet) {
-						try {
-							if ("".equals(getParameter(type.getKey()))) {
-								addError(new SimpleProcessSetupError(Severity.ERROR, portOwner,
-										Collections.singletonList(new ParameterSettingQuickFix(this, type.getKey())),
-										"undefined_parameter", new Object[] { type.getKey().replace('_', ' ') }));
-								errorCount++;
-							}
-						} catch (UndefinedParameterError e) {
-							// Ignore
-						}
+		for (ParameterType type : getParameters().getParameterTypes()) {
+			boolean optional = type.isOptional();
+			boolean hidden = type.isHidden();
+			String key = type.getKey();
+			if (!optional && !hidden) {
+				boolean parameterSet = getParameters().isSet(key);
+				boolean isUndefined = false;
+				try {
+					isUndefined = parameterSet
+							&& (type instanceof ParameterTypeAttribute || type instanceof CombinedParameterType)
+							&& "".equals(getParameter(key));
+				} catch (UndefinedParameterError e) {
+					// ignore
+				}
+				if (!parameterSet || isUndefined) {
+					addError(new UndefinedParameterSetupError(this, key));
+					errorCount++;
+				}
+			}
+			if (type instanceof ParameterTypeRepositoryLocation) {
+				String value = getParameters().getParameterOrNull(key);
+				if (value == null || value.isEmpty() || ((ParameterTypeRepositoryLocation) type).isAllowAbsoluteEntries()
+						|| value.charAt(0) != SEPARATOR && !value.startsWith(REPOSITORY_PREFIX)
+						|| isConnectionPath(value) && !value.startsWith(REPOSITORY_PREFIX))  {
+					continue;
+				}
+				String errorKey = null;
+				Severity severity = null;
+				List<? extends QuickFix> quickfix = Collections.singletonList(
+						new RelativizeRepositoryLocationQuickfix(this, key, value));
+				if (!value.startsWith(REPOSITORY_PREFIX)) {
+					errorKey = "absolute_repository_location";
+					severity = Severity.ERROR;
+					if (getProcess().getRepositoryLocation() == null) {
+						quickfix = Collections.emptyList();
+					}
+					errorCount++;
+				} else if (!value.startsWith(REPOSITORY_PREFIX + RepositoryManager.SAMPLE_REPOSITORY_NAME)) {
+					errorKey = "accessing_repository_by_name";
+					severity = Severity.WARNING;
+					RepositoryLocation processLocation = getProcess().getRepositoryLocation();
+					if (processLocation == null || !value.startsWith(REPOSITORY_PREFIX + processLocation.getRepositoryName())) {
+						quickfix = Collections.emptyList();
 					}
 				}
-				if (type instanceof ParameterTypeRepositoryLocation) {
-					String value = getParameters().getParameterOrNull(type.getKey());
-					if (value != null && !((ParameterTypeRepositoryLocation) type).isAllowAbsoluteEntries()) {
-						if (value.startsWith(RepositoryLocation.REPOSITORY_PREFIX)) {
-							if (!value.startsWith(
-									RepositoryLocation.REPOSITORY_PREFIX + RepositoryManager.SAMPLE_REPOSITORY_NAME)) {
-								addError(new SimpleProcessSetupError(Severity.WARNING, portOwner,
-										Collections.<QuickFix> emptyList(), "accessing_repository_by_name",
-										new Object[] { type.getKey().replace('_', ' '), value }));
-							}
-						} else if (value.startsWith(String.valueOf(RepositoryLocation.SEPARATOR))) {
-							addError(new SimpleProcessSetupError(Severity.ERROR, portOwner,
-									Collections.singletonList(
-											new RelativizeRepositoryLocationQuickfix(this, type.getKey(), value)),
-									"absolute_repository_location",
-									new Object[] { type.getKey().replace('_', ' '), value }));
+				if (errorKey != null) {
+					addError(new SimpleProcessSetupError(severity, getPortOwner(), quickfix, errorKey,
+							key.replace('_', ' '), value));
+				}
+			} else if (type instanceof ParameterTypeDateFormat) {
+				Locale locale = Locale.getDefault();
+				try {
+					int localeIndex;
+					localeIndex = getParameterAsInt(AbstractDataResultSetReader.PARAMETER_LOCALE);
+					if (localeIndex >= 0 && localeIndex < AbstractDateDataProcessing.availableLocales.size()) {
+						locale = AbstractDateDataProcessing.availableLocales.get(localeIndex);
+					}
+				} catch (UndefinedParameterError e) {
+					// ignore and use default locale
+				}
+				try {
+					ParameterTypeDateFormat.createCheckedDateFormat(this, locale, true);
+				} catch (UserError userError) {
+					// will not happen because of isSetup
+				}
 
-						}
-					}
-				} else if (!optional && type instanceof ParameterTypeDate) {
-					String value = getParameters().getParameterOrNull(type.getKey());
-					if (value != null && !ParameterTypeDate.isValidDate(value)) {
-						addError(new SimpleProcessSetupError(Severity.WARNING, portOwner, "invalid_date_format",
-								new Object[] { type.getKey().replace('_', ' '), value }));
-					}
+			} else if (!optional && !hidden && type instanceof ParameterTypeDate) {
+				String value = getParameters().getParameterOrNull(key);
+				if (value != null && !ParameterTypeDate.isValidDate(value)) {
+					addError(new SimpleProcessSetupError(Severity.WARNING, portOwner, "invalid_date_format",
+							key.replace('_', ' '), value));
 				}
 			}
 		}
@@ -922,7 +942,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 		int deprecationCount = 0;
 		if (deprecationString != null) {
 			addError(new SimpleProcessSetupError(Severity.WARNING, portOwner, "deprecation",
-					new Object[] { getOperatorDescription().getName(), deprecationString }));
+					new Object[]{getOperatorDescription().getName(), deprecationString}));
 			deprecationCount = 1;
 		}
 		return deprecationCount;
@@ -951,11 +971,9 @@ public abstract class Operator extends AbstractObservable<Operator>
 			return;
 		}
 
-		if (getOperatorDescription().getDeprecationInfo() != null) {
-			if (applyCount.get() == 0) {
-				getLogger().warning("Deprecation warning for " + getOperatorDescription().getName() + ": "
-						+ getOperatorDescription().getDeprecationInfo());
-			}
+		if (getOperatorDescription().getDeprecationInfo() != null && applyCount.get() == 0) {
+			getLogger().warning("Deprecation warning for " + getOperatorDescription().getName() + ": "
+					+ getOperatorDescription().getDeprecationInfo());
 		}
 
 		getOutputPorts().clear(Port.CLEAR_DATA);
@@ -1003,14 +1021,26 @@ public abstract class Operator extends AbstractObservable<Operator>
 				fireUpdate();
 				doWork();
 				getLogger().fine("Completed application " + applyCount.get() + " of operator " + getName());
-			} catch (ProcessStoppedRuntimeException e) {
+			} catch (ProcessStoppedRuntimeException | ExecutionAbortedException e) {
 				// Convert unchecked exception to checked exception (unchecked exception might be
 				// thrown from places where no checked exceptions are possible, e.g. thread pools).
 				throw new ProcessStoppedException(this);
+			} catch (RuntimeException e) {
+				if (!(e instanceof OperatorRuntimeException)) {
+					throw e;
+				}
+				OperatorException operatorException = ((OperatorRuntimeException) e).toOperatorException();
+				if (!(operatorException instanceof UserError)) {
+					throw operatorException;
+				}
+				UserError userError = (UserError) operatorException;
+				if (userError.getOperator() == null) {
+					userError.setOperator(this);
+				}
+				throw userError;
 			} catch (UserError e) {
 				// TODO: ensuring that operator is removed if it abnormally terminates but is not
-				// removed if
-				// child operator terminates abnormally
+				// removed if child operator terminates abnormally
 				if (e.getOperator() == null) {
 					e.setOperator(this);
 				}
@@ -1026,6 +1056,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 						ioObject.setSource(getName());
 						if (ioObject instanceof IOObjectCollection) {
 							for (IOObject ioo : ((IOObjectCollection<IOObject>) ioObject).getObjects()) {
+								DeliveringPortManager.setLastDeliveringPort(ioo, outputPort);
 								if (ioo.getSource() == null) {
 									ioo.setSource(getName());
 								}
@@ -1059,11 +1090,11 @@ public abstract class Operator extends AbstractObservable<Operator>
 		}
 	}
 
-	private void formatIO(Ports<? extends Port> ports, StringBuilder builder) {
+	private void formatIO(Ports<?> ports, StringBuilder builder) {
 		for (Port port : ports.getAllPorts()) {
 			builder.append("\n  ");
 			builder.append(port.getName());
-			IOObject data = port.getAnyDataOrNull();
+			IOObject data = port.getRawData();
 			builder.append(data == null ? "-/-" : data.toString());
 		}
 	}
@@ -1304,6 +1335,22 @@ public abstract class Operator extends AbstractObservable<Operator>
 		return parameters;
 	}
 
+	/**
+	 * Returns the the first primary {@link ParameterType} of this operator that is not hidden
+	 * if it exists. May return {@code null}.
+	 *
+	 * @return the primary parameter or {@code null}
+	 * @since 8.2
+	 */
+	public ParameterType getPrimaryParameter() {
+		for (ParameterType param : getParameters().getParameterTypes()) {
+			if (param.isPrimary() && !param.isHidden()) {
+				return param;
+			}
+		}
+		return null;
+	}
+
 	@Override
 	public ParameterHandler getParameterHandler() {
 		return this;
@@ -1315,6 +1362,16 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 */
 	@Override
 	public void setParameters(Parameters parameters) {
+		if (this.parameters != parameters) {
+			if (this.parameters != null) {
+				this.parameters.removeObserver(delegatingParameterObserver);
+				this.parameters.removeObserver(dirtyObserver);
+			}
+			if (parameters != null) {
+				parameters.addObserver(delegatingParameterObserver, false);
+				makeDirtyOnUpdate(parameters);
+			}
+		}
 		this.parameters = parameters;
 	}
 
@@ -1381,44 +1438,30 @@ public abstract class Operator extends AbstractObservable<Operator>
 	/** Returns a single named parameter and casts it to int. */
 	@Override
 	public int getParameterAsInt(String key) throws UndefinedParameterError {
-		ParameterType type = this.getParameters().getParameterType(key);
-		String value = getParameter(key);
-		if (type != null) {
-			if (type instanceof ParameterTypeCategory) {
-				String parameterValue = value;
-				try {
-					return Integer.valueOf(parameterValue);
-				} catch (NumberFormatException e) {
-					ParameterTypeCategory categoryType = (ParameterTypeCategory) type;
-					return categoryType.getIndex(parameterValue);
-				}
-			}
-		}
-		try {
-			return Integer.valueOf(value);
-		} catch (NumberFormatException e) {
-			throw new UndefinedParameterError(key, this, "Expected integer but found '" + value + "'.");
-		}
+		return getParameterAsIntNumber(key, Integer::valueOf, Integer::intValue);
 	}
 
 	/** Returns a single named parameter and casts it to long. */
 	@Override
 	public long getParameterAsLong(String key) throws UndefinedParameterError {
+		return getParameterAsIntNumber(key, Long::valueOf, Long::valueOf);
+	}
+
+	private <N extends Number> N getParameterAsIntNumber(String key,
+														 Function<String, N> transformer,
+														 Function<Integer, N> caster) throws UndefinedParameterError{
 		ParameterType type = this.getParameters().getParameterType(key);
 		String value = getParameter(key);
-		if (type != null) {
-			if (type instanceof ParameterTypeCategory) {
-				String parameterValue = value;
-				try {
-					return Long.valueOf(parameterValue);
-				} catch (NumberFormatException e) {
-					ParameterTypeCategory categoryType = (ParameterTypeCategory) type;
-					return categoryType.getIndex(parameterValue);
-				}
+		if (type instanceof ParameterTypeCategory) {
+			try {
+				return transformer.apply(value);
+			} catch (NumberFormatException e) {
+				ParameterTypeCategory categoryType = (ParameterTypeCategory) type;
+				return caster.apply(categoryType.getIndex(value));
 			}
 		}
 		try {
-			return Long.valueOf(value);
+			return transformer.apply(value);
 		} catch (NumberFormatException e) {
 			throw new UndefinedParameterError(key, this, "Expected long but found '" + value + "'.");
 		}
@@ -1485,7 +1528,8 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * this method returns null. Operators should always use this method instead of directly using
 	 * the method {@link Process#resolveFileName(String)}.
 	 *
-	 * @throws DirectoryCreationError
+	 * @throws IOException
+	 * @throws UserError
 	 */
 	@Override
 	public InputStream getParameterAsInputStream(String key) throws IOException, UserError {
@@ -1530,63 +1574,74 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * method returns null. Operators should always use this method instead of directly using the
 	 * method {@link Process#resolveFileName(String)}.
 	 *
-	 * @throws DirectoryCreationError
+	 * @throws UserError
 	 */
 	@Override
-	public java.io.File getParameterAsFile(String key, boolean createMissingDirectories) throws UserError {
+	public File getParameterAsFile(String key, boolean createMissingDirectories) throws UserError {
 		String fileName = getParameter(key);
 		if (fileName == null) {
 			return null;
 		}
 
 		Process process = getProcess();
+		File result;
 		if (process != null) {
-			File result = process.resolveFileName(fileName);
-			if (createMissingDirectories) {
-				File parent = result.getParentFile();
-				if (parent != null) {
-					if (!parent.exists()) {
-						boolean isDirectoryCreated = parent.mkdirs();
-						if (!isDirectoryCreated) {
-							throw new UserError(null, "io.dir_creation_fail", parent.getAbsolutePath());
-						}
-					}
-				}
-			}
-			return result;
+			result = process.resolveFileName(fileName);
 		} else {
 			getLogger().fine(getName() + " is not attached to a process. Trying '" + fileName + "' as absolute filename.");
-			File result = new File(fileName);
-			if (createMissingDirectories) {
-				if (result.isDirectory()) {
-					boolean isDirectoryCreated = result.mkdirs();
-					if (!isDirectoryCreated) {
-						throw new UserError(null, "io.dir_creation_fail", result.getAbsolutePath());
-					}
-				} else {
-					File parent = result.getParentFile();
-					if (parent != null) {
-						if (!parent.exists()) {
-							boolean isDirectoryCreated = parent.mkdirs();
-							if (!isDirectoryCreated) {
-								throw new UserError(null, "io.dir_creation_fail", parent.getAbsolutePath());
-							}
-						}
-
-					}
-				}
-			}
-			return result;
+			result = new File(fileName);
 		}
+
+		if (createMissingDirectories) {
+			File parent = result.getParentFile();
+			if (parent != null && !parent.exists() && !parent.mkdirs()) {
+				throw new UserError(null, "io.dir_creation_fail", parent.getAbsolutePath());
+			}
+		}
+		return result;
 	}
 
 	/**
-	 * This method returns the parameter identified by key as a RepositoryLocation. For this the
-	 * string is resolved against this operators process location in the Repository.
+	 * This method returns the parameter identified by key as a RepositoryLocation for a folder. For this the string is
+	 * resolved against this operators process location in the Repository.
+	 *
+	 * @param key the parameter key
+	 * @since 9.7
 	 */
-	public RepositoryLocation getParameterAsRepositoryLocation(String key) throws UserError {
+	public RepositoryLocation getParameterAsRepositoryLocationFolder(String key) throws UserError {
 		String loc = getParameter(key);
-		return RepositoryLocation.getRepositoryLocation(loc, this);
+		return RepositoryLocation.getRepositoryLocationFolder(loc, this);
+	}
+
+	/**
+	 * This method returns the parameter identified by key as a RepositoryLocation. For this the string is resolved
+	 * against this operators process location in the Repository.
+	 *
+	 * @param key              the parameter key
+	 * @param expectedDataType the expected specific {@link DataEntry} (sub-)type. At the same repository location, for
+	 *                         example a "test.rmhdf5table" (example set) and "test.rmp" (process) might live, and if
+	 *                         the expected data entry subtype is not specified, this method will return the first one
+	 *                         it finds. If {@code null}, will use {@link DataEntry}. Also see {@link
+	 *                         RepositoryLocation#locateData()}.
+	 * @since 9.7
+	 */
+	public RepositoryLocation getParameterAsRepositoryLocationData(String key, Class<? extends DataEntry> expectedDataType) throws UserError {
+		String loc = getParameter(key);
+		return RepositoryLocation.getRepositoryLocationData(loc, this, expectedDataType);
+	}
+
+	/**
+	 * This method returns the parameter identified by key as a RepositoryLocation. For this the string is resolved
+	 * against this operators process location in the Repository.
+	 *
+	 * @deprecated since 9.7, use {@link #getParameterAsRepositoryLocationFolder(String)} or {@link
+	 * #getParameterAsRepositoryLocationData(String, Class)} instead
+	 */
+	@Deprecated
+	public RepositoryLocation getParameterAsRepositoryLocation(String key) throws UserError {
+		RepositoryLocation location = getParameterAsRepositoryLocationData(key, DataEntry.class);
+		location.setLocationType(RepositoryLocationType.UNKNOWN);
+		return location;
 	}
 
 	/** Returns a single named parameter and casts it to a double matrix. */
@@ -1683,21 +1738,21 @@ public abstract class Operator extends AbstractObservable<Operator>
 	}
 
 	/**
-	 * Writes the XML representation of this operator.
+	 * This will report this operator with all its parameter settings to the given writer as XML.
 	 *
-	 * @deprecated indent is not considered any more. Use {@link #writeXML(Writer, boolean)}
+	 * @deprecated since 9.7, use {@link #writeXML(Writer, boolean, String)} instead
 	 */
 	@Deprecated
-	public void writeXML(Writer out, String indent, boolean hideDefault) throws IOException {
-		writeXML(out, hideDefault);
+	public void writeXML(Writer out, boolean hideDefault) throws IOException {
+		writeXML(out, hideDefault, EncryptionProvider.DEFAULT_CONTEXT);
 	}
 
 	/**
 	 * This will report this operator with all its parameter settings to the given writer as XML.
 	 */
-	public void writeXML(Writer out, boolean hideDefault) throws IOException {
+	public void writeXML(Writer out, boolean hideDefault, String encryptionContext) throws IOException {
 		try {
-			XMLTools.stream(new XMLExporter().exportProcess(this, hideDefault), new StreamResult(out),
+			XMLTools.stream(new XMLExporter(false, encryptionContext).exportProcess(this, hideDefault), new StreamResult(out),
 					XMLImporter.PROCESS_FILE_CHARSET);
 		} catch (XMLException e) {
 			throw new IOException("Cannot create process XML: " + e, e);
@@ -1706,35 +1761,65 @@ public abstract class Operator extends AbstractObservable<Operator>
 
 	/**
 	 * This returns this operator with all its parameter settings as a {@link Document}
+	 *
+	 * @deprecated since 9.7, use {@link #getXML(boolean, boolean, String)} instead
 	 */
+	@Deprecated
 	public Document getDOMRepresentation() throws IOException {
-		return new XMLExporter().exportProcess(this, false);
+		return new XMLExporter(false, EncryptionProvider.DEFAULT_CONTEXT).exportProcess(this, false);
 	}
 
 	/**
-	 * @deprecated indent is not used any more. Use {@link #getXML(boolean)}.
+	 * Same as getXML(hideDefault, false).
+	 *
+	 * @deprecated since 9.7, use {@link #getXML(boolean, String)} instead
 	 */
 	@Deprecated
-	public String getXML(String indent, boolean hideDefault) {
-		return getXML(hideDefault);
-	}
-
-	/** Same as getXML(hideDefault, false). */
 	public String getXML(boolean hideDefault) {
 		return getXML(hideDefault, false);
 	}
 
 	/**
+	 * Same as getXML(hideDefault, false, encryptionContext).
+	 *
+	 * @param hideDefault       if {@code true}, default parameters will be ignored when creating the xml
+	 *                          representation
+	 * @param encryptionContext the encryption context that will be used to potentially encrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider#DEFAULT_CONTEXT}). If {@code null}, no
+	 *                          encryption will be used!
+	 * @return the XML, where ParameterTypes that require encryption (e.g. ParameterTypePassword) are encrypted with the
+	 * given encryption context, never {@code null}
+	 * @since 9.7
+	 */
+	public String getXML(boolean hideDefault, String encryptionContext) {
+		return getXML(hideDefault, false, encryptionContext);
+	}
+
+	/**
 	 * Returns the XML representation of this operator.
 	 *
-	 * @param hideDefault
-	 *            if true, default parameters will be ignored when creating the xml representation
-	 * @param onlyCoreElements
-	 *            if true, GUI and other additional information will be ignored.
+	 * @param hideDefault      if true, default parameters will be ignored when creating the xml representation
+	 * @param onlyCoreElements if true, GUI and other additional information will be ignored.
+	 * @deprecated since 9.7, use {@link #getXML(boolean, boolean, String)} instead
 	 */
+	@Deprecated
 	public String getXML(boolean hideDefault, boolean onlyCoreElements) {
+		return getXML(hideDefault, onlyCoreElements, EncryptionProvider.DEFAULT_CONTEXT);
+	}
+
+	/**
+	 * @param hideDefault       if {@code true}, default parameters will be ignored when creating the xml
+	 *                          representation
+	 * @param onlyCoreElements  if {@code true}, GUI and other additional information will be ignored
+	 * @param encryptionContext the encryption context that will be used to potentially encrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider})
+	 * @return the XML, where ParameterTypes that require encryption (e.g. ParameterTypePassword) are encrypted with the
+	 * given encryption context, never {@code null}
+	 * @since 9.7
+	 */
+	public String getXML(boolean hideDefault, boolean onlyCoreElements, String encryptionContext) {
 		try {
-			return XMLTools.toString(new XMLExporter(onlyCoreElements).exportProcess(this, hideDefault));
+			return XMLTools.toString(new XMLExporter(onlyCoreElements, encryptionContext).exportProcess(this, hideDefault));
 		} catch (Exception e) {
 			LogService.getRoot().log(Level.WARNING, I18N.getMessage(LogService.getRoot().getResourceBundle(),
 					"com.rapidminer.operator.Operator.generating_xml_process_error", e), e);
@@ -1742,31 +1827,48 @@ public abstract class Operator extends AbstractObservable<Operator>
 		}
 	}
 
+	/**
+	 * @deprecated since 9.7, use {@link #createFromXML(Element, Process, List, ProgressListener, VersionNumber, String)} instead
+	 */
+	@Deprecated
 	public static Operator createFromXML(Element element, Process targetProcess,
-			List<UnknownParameterInformation> unknownParameterInformation) throws XMLException {
-		return createFromXML(element, targetProcess, unknownParameterInformation, null);
+										 List<UnknownParameterInformation> unknownParameterInformation) throws XMLException {
+		return createFromXML(element, targetProcess, unknownParameterInformation, null, XMLImporter.CURRENT_VERSION, EncryptionProvider.DEFAULT_CONTEXT);
 	}
 
 	/**
-	 * This will create an operator by interpreting the given XML element as being generated from
-	 * the current RapidMiner version. No Import Rules will be applied to adapt it to version
-	 * changes.
+	 * @deprecated since 9.7, use {@link #createFromXML(Element, Process, List, ProgressListener, VersionNumber, String)} instead
 	 */
+	@Deprecated
 	public static Operator createFromXML(Element element, Process process,
-			List<UnknownParameterInformation> unknownParameterInformation, ProgressListener l) throws XMLException {
-		XMLImporter importer = new XMLImporter(l);
-		return importer.parseOperator(element, XMLImporter.CURRENT_VERSION, process, unknownParameterInformation);
+										 List<UnknownParameterInformation> unknownParameterInformation, ProgressListener l) throws XMLException {
+		return createFromXML(element, process, unknownParameterInformation, l, XMLImporter.CURRENT_VERSION, EncryptionProvider.DEFAULT_CONTEXT);
 	}
 
 	/**
-	 * This will create an operator from a XML element describing this operator. The given version
-	 * will be passed to the XMLImporter to enable the handling of this element as if it would have
-	 * been created from this version. See {@link XMLImporter#VERSION_RM_5} for details.
+	 * @deprecated since 9.7, use {@link #createFromXML(Element, Process, List, ProgressListener, VersionNumber, String)} instead
+	 */
+	@Deprecated
+	public static Operator createFromXML(Element element, Process process,
+										 List<UnknownParameterInformation> unknownParameterInformation, ProgressListener progressListener,
+										 VersionNumber originatingVersion) throws XMLException {
+		return createFromXML(element, process, unknownParameterInformation, progressListener, originatingVersion, EncryptionProvider.DEFAULT_CONTEXT);
+	}
+
+	/**
+	 * This will create an operator from a XML element describing this operator. The given version will be passed to the
+	 * XMLImporter to enable the handling of this element as if it would have been created from this version. See {@link
+	 * XMLImporter#VERSION_RM_5} for details.
+	 *
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider}). If {@code null}, no decryption
+	 *                          will take place
+	 * @since 9.7
 	 */
 	public static Operator createFromXML(Element element, Process process,
-			List<UnknownParameterInformation> unknownParameterInformation, ProgressListener progressListener,
-			VersionNumber originatingVersion) throws XMLException {
-		XMLImporter importer = new XMLImporter(progressListener);
+										 List<UnknownParameterInformation> unknownParameterInformation, ProgressListener progressListener,
+										 VersionNumber originatingVersion, String encryptionContext) throws XMLException {
+		XMLImporter importer = new XMLImporter(progressListener, encryptionContext);
 		return importer.parseOperator(element, originatingVersion, process, unknownParameterInformation);
 	}
 
@@ -1888,12 +1990,13 @@ public abstract class Operator extends AbstractObservable<Operator>
 	public List<ProcessSetupError> getErrorList() {
 		List<ProcessSetupError> errors = new LinkedList<>();
 		collectErrors(errors);
+		errors.sort(Comparator.comparing(ProcessSetupError::getSeverity).reversed());
 		return errors;
 	}
 
 	protected void collectErrors(List<ProcessSetupError> errors) {
 		errors.addAll(errorList);
-		for (Port port : getInputPorts().getAllPorts()) {
+		for (InputPort port : getInputPorts().getAllPorts()) {
 			Collection<MetaDataError> portErrors = port.getErrors();
 			if (portErrors != null) {
 				try {
@@ -1905,10 +2008,10 @@ public abstract class Operator extends AbstractObservable<Operator>
 				}
 			}
 		}
-		for (Port port : getOutputPorts().getAllPorts()) {
+		for (OutputPort port : getOutputPorts().getAllPorts()) {
 			Collection<MetaDataError> portErrors = port.getErrors();
 			if (portErrors != null) {
-				errors.addAll(port.getErrors());
+				errors.addAll(portErrors);
 			}
 		}
 	}
@@ -1930,29 +2033,9 @@ public abstract class Operator extends AbstractObservable<Operator>
 		return (breakPoint[0] || breakPoint[1] ? "* " : "") + name + " (" + type + ")";
 	}
 
-	/**
-	 * Returns this operator's name and class.
-	 *
-	 * @deprecated Use {@link #createProcessTree(int)} instead
-	 */
-	@Deprecated
-	public String createExperimentTree(int indent) {
-		return createProcessTree(indent);
-	}
-
 	/** Returns this operator's name and class. */
 	public String createProcessTree(int indent) {
 		return createProcessTree(indent, "", "", null, null);
-	}
-
-	/**
-	 * Returns this operator's name and class.
-	 *
-	 * @deprecated Use {@link #createMarkedProcessTree(int,String,Operator)} instead
-	 */
-	@Deprecated
-	public String createMarkedExperimentTree(int indent, String mark, Operator markOperator) {
-		return createMarkedProcessTree(indent, mark, markOperator);
 	}
 
 	/** Returns this operator's name and class. */
@@ -1960,33 +2043,22 @@ public abstract class Operator extends AbstractObservable<Operator>
 		return createProcessTree(indent, "", "", markOperator, mark);
 	}
 
-	/**
-	 * Returns this operator's name and class.
-	 *
-	 * @deprecated Use {@link #createProcessTree(int,String,String,Operator,String)} instead
-	 */
-	@Deprecated
-	protected String createExperimentTree(int indent, String selfPrefix, String childPrefix, Operator markOperator,
-			String mark) {
-		return createProcessTree(indent, selfPrefix, childPrefix, markOperator, mark);
-	}
-
 	/** Returns this operator's name and class. */
 	protected String createProcessTree(int indent, String selfPrefix, String childPrefix, Operator markOperator,
-			String mark) {
+									   String mark) {
 		return createProcessTreeEntry(indent, selfPrefix, childPrefix, markOperator, mark);
 	}
 
 	/** Returns this operator's name and class in a list. */
 	protected List<String> createProcessTreeList(int indent, String selfPrefix, String childPrefix, Operator markOperator,
-			String mark) {
+												 String mark) {
 		List<String> processTreeList = new LinkedList<>();
 		processTreeList.add(createProcessTreeEntry(indent, selfPrefix, childPrefix, markOperator, mark));
 		return processTreeList;
 	}
 
 	private String createProcessTreeEntry(int indent, String selfPrefix, String childPrefix, Operator markOperator,
-			String mark) {
+										  String mark) {
 		if (markOperator != null && getName().equals(markOperator.getName())) {
 			return Tools.indent(indent - mark.length()) + mark + selfPrefix + getName() + "[" + applyCount + "]" + " ("
 					+ getOperatorClassName() + ")";
@@ -2061,13 +2133,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 	private final Observer<String> delegatingParameterObserver = new DelegatingObserver<>(this, this);
 	/** Sets the dirty flag on any update. */
 	@SuppressWarnings("rawtypes")
-	private final Observer dirtyObserver = new Observer<Object>() {
-
-		@Override
-		public void update(Observable<Object> observable, Object arg) {
-			makeDirty();
-		}
-	};
+	private final Observer dirtyObserver = (observable, arg) -> makeDirty();
 	private ExecutionUnit enclosingExecutionUnit;
 
 	/**
@@ -2175,20 +2241,11 @@ public abstract class Operator extends AbstractObservable<Operator>
 	}
 
 	/**
-	 * This method will disconnect all ports from as well the input ports as well as the
-	 * outputports.
+	 * This method will disconnect all ports from the input ports as well as the output ports.
 	 */
 	public void disconnectPorts() {
-		for (OutputPort port : getOutputPorts().getAllPorts()) {
-			if (port.isConnected()) {
-				port.disconnect();
-			}
-		}
-		for (InputPort port : getInputPorts().getAllPorts()) {
-			if (port.isConnected()) {
-				port.getSource().disconnect();
-			}
-		}
+		Stream.concat(getOutputPorts().getAllPorts().stream(), getInputPorts().getAllPorts().stream())
+				.filter(Port::isConnected).forEach(Port::disconnect);
 	}
 
 	/**
@@ -2228,10 +2285,11 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * ProcessRootOperator!
 	 */
 	public Operator getRoot() {
-		if (getParent() == null) {
+		OperatorChain parent = getParent();
+		if (parent == null) {
 			return this;
 		} else {
-			return getParent().getRoot();
+			return parent.getRoot();
 		}
 	}
 
@@ -2243,6 +2301,26 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 */
 	public void notifyRenaming(String oldName, String newName) {
 		getParameters().notifyRenaming(oldName, newName);
+	}
+
+	/**
+	 * This method is called when the operator given by {@code oldName} (and {@code oldOp} if it is not {@code null})
+	 * was replaced with the operator described by {@code newName} and {@code newOp}.
+	 * This will inform the {@link Parameters} of the replacing.
+	 *
+	 * @param oldName
+	 * 		the name of the old operator
+	 * @param oldOp
+	 * 		the old operator; can be {@code null}
+	 * @param newName
+	 * 		the name of the new operator
+	 * @param newOp
+	 * 		the new operator; must not be {@code null}
+	 * @see Parameters#notifyReplacing(String, Operator, String, Operator)
+	 * @since 9.3
+	 */
+	public void notifyReplacing(String oldName, Operator oldOp, String newName, Operator newOp) {
+		getParameters().notifyReplacing(oldName, oldOp, newName, newOp);
 	}
 
 	@Override
@@ -2366,7 +2444,7 @@ public abstract class Operator extends AbstractObservable<Operator>
 	 * Looks up an operator with the given name in the containing process.
 	 *
 	 * TODO: This method is slow since it scans operators several times. Simply looking at the
-	 * {@link Process#operatorNameMap} does not work for parallel execution, however.
+	 * Process#operatorNameMap does not work for parallel execution, however.
 	 */
 	protected Operator lookupOperator(String operatorName) {
 		if (getName().equals(operatorName)) {

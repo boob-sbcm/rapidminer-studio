@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.studio.io.data.internal.file.csv;
 
 import static org.junit.Assert.assertEquals;
@@ -40,6 +40,7 @@ import com.rapidminer.core.io.data.DataSet;
 import com.rapidminer.core.io.data.DataSetException;
 import com.rapidminer.core.io.data.DataSetRow;
 import com.rapidminer.core.io.data.ParseException;
+import com.rapidminer.parameter.ParameterTypeDateFormat;
 import com.rapidminer.studio.io.data.HeaderRowBehindStartRowException;
 import com.rapidminer.studio.io.data.HeaderRowNotFoundException;
 import com.rapidminer.studio.io.data.StartRowNotFoundException;
@@ -412,7 +413,7 @@ public class CSVDataSourceDataTest {
 	}
 
 	@Test
-	public void missingInHeaderRow() throws DataSetException, ParseException {
+	public void missingInHeaderRow() throws DataSetException {
 
 		try (CSVDataSource dataSource = new CSVDataSource()) {
 			dataSource.setLocation(missingInHeaderRow.toPath());
@@ -566,7 +567,7 @@ public class CSVDataSourceDataTest {
 	}
 
 	@Test(expected = StartRowNotFoundException.class)
-	public void wrongColumnSeparator() throws DataSetException, ParseException {
+	public void wrongColumnSeparator() throws DataSetException {
 		try (CSVDataSource dataSource = new CSVDataSource()) {
 			dataSource.setLocation(simpleTestFile.toPath());
 			dataSource.getResultSetConfiguration().setColumnSeparators("\t");
@@ -1039,7 +1040,7 @@ public class CSVDataSourceDataTest {
 			dataSource.createMetaData();
 
 			int dateColumnIndex = 6;
-			SimpleDateFormat dateFormat = new SimpleDateFormat("M/d/yy h:mm a");
+			SimpleDateFormat dateFormat = new SimpleDateFormat(ParameterTypeDateFormat.DATE_TIME_FORMAT_M_D_YY_H_MM_A);
 
 			// check meta data and set to date
 			assertEquals(7, dataSource.getMetadata().getColumnMetaData().size());

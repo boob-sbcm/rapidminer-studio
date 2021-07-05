@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,10 +24,10 @@ import java.awt.geom.GeneralPath;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 
-import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.UIManager;
 
+import com.rapidminer.gui.LoggedAbstractAction;
 import com.vlsolutions.swing.docking.DockGroup;
 import com.vlsolutions.swing.docking.DockKey;
 import com.vlsolutions.swing.docking.DockViewAsTab;
@@ -62,12 +62,12 @@ public class DetachedDockViewAsTab extends DockViewAsTab {
 	@Override
 	public void resetTabIcons() {
 		// configure attach button
-		attachAction = new AbstractAction("Attach") {
+		attachAction = new LoggedAbstractAction("Attach") {
 
 			private static final long serialVersionUID = 390635147992456838L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				desktop.setFloating(getDockable(), false);
 			}
 		};
@@ -89,9 +89,9 @@ public class DetachedDockViewAsTab extends DockViewAsTab {
 			SmartIconJButton[] iconsArray = icons.toArray(new SmartIconJButton[0]);
 			smartIcon = new JTabbedPaneSmartIcon(dockKey.getIcon(), dockKey.getName(), null, null, true, iconsArray);
 			smartIcon.setIconForTabbedPane(tabHeader);
-			tabHeader.addTab("", smartIcon, getDockable().getComponent());
+			tabHeader.addTab("", smartIcon, getDockable().getComponent(), dockKey.getTooltip());
 		} else {
-			tabHeader.addTab(dockKey.getName(), dockKey.getIcon(), getDockable().getComponent());
+			tabHeader.addTab(dockKey.getName(), dockKey.getIcon(), getDockable().getComponent(), dockKey.getTooltip());
 		}
 
 	}
@@ -149,7 +149,6 @@ public class DetachedDockViewAsTab extends DockViewAsTab {
 				((DockDragEvent) event).acceptDrag(lastDropGeneralPath);
 			} else {
 				GeneralPath path = buildPathForTab(bounds);
-				;
 				lastDropShape = r2d;
 				lastDropGeneralPath = path;
 				((DockDragEvent) event).acceptDrag(lastDropGeneralPath);

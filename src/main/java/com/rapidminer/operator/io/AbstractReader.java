@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,102 +18,247 @@
 */
 package com.rapidminer.operator.io;
 
-import com.rapidminer.Process;
-import com.rapidminer.operator.Annotations;
-import com.rapidminer.operator.IOObject;
-import com.rapidminer.operator.Operator;
-import com.rapidminer.operator.OperatorCreationException;
-import com.rapidminer.operator.OperatorDescription;
-import com.rapidminer.operator.OperatorException;
-import com.rapidminer.operator.ProcessSetupError.Severity;
-import com.rapidminer.operator.ports.OutputPort;
-import com.rapidminer.operator.ports.metadata.MDTransformationRule;
-import com.rapidminer.operator.ports.metadata.MetaData;
-import com.rapidminer.operator.ports.metadata.MetaDataError;
-import com.rapidminer.operator.ports.metadata.SimpleMetaDataError;
-import com.rapidminer.parameter.ParameterType;
-import com.rapidminer.parameter.UndefinedParameterError;
-import com.rapidminer.tools.Observable;
-import com.rapidminer.tools.Observer;
-import com.rapidminer.tools.OperatorService;
-import com.rapidminer.tools.io.Encoding;
-
 import java.io.File;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.rapidminer.Process;
+import com.rapidminer.example.ExampleSet;
+import com.rapidminer.gui.MetaDataUpdateQueue;
+import com.rapidminer.gui.tools.ProgressThread;
+import com.rapidminer.operator.Annotations;
+import com.rapidminer.operator.DebugMode;
+import com.rapidminer.operator.IOObject;
+import com.rapidminer.operator.IOObjectCollection;
+import com.rapidminer.operator.Model;
+import com.rapidminer.operator.Operator;
+import com.rapidminer.operator.OperatorCreationException;
+import com.rapidminer.operator.OperatorDescription;
+import com.rapidminer.operator.OperatorException;
+import com.rapidminer.operator.ProcessSetupError;
+import com.rapidminer.operator.ProcessSetupError.Severity;
+import com.rapidminer.operator.UserError;
+import com.rapidminer.operator.UserSetupError;
+import com.rapidminer.operator.features.weighting.ForestBasedWeighting.RandomForestModelMetaData;
+import com.rapidminer.operator.learner.PredictionModel;
+import com.rapidminer.operator.learner.tree.ConfigurableRandomForestModel;
+import com.rapidminer.operator.ports.OutputPort;
+import com.rapidminer.operator.ports.metadata.CollectionMetaData;
+import com.rapidminer.operator.ports.metadata.ExampleSetMetaData;
+import com.rapidminer.operator.ports.metadata.MetaData;
+import com.rapidminer.operator.ports.metadata.MetaDataError;
+import com.rapidminer.operator.ports.metadata.ModelMetaData;
+import com.rapidminer.operator.ports.metadata.PredictionModelMetaData;
+import com.rapidminer.operator.ports.metadata.ProcessNotInRepositoryMetaDataError;
+import com.rapidminer.operator.ports.metadata.SimpleMetaDataError;
+import com.rapidminer.operator.ports.quickfix.SaveProcessQuickFix;
+import com.rapidminer.parameter.ParameterType;
+import com.rapidminer.parameter.UndefinedParameterError;
+import com.rapidminer.tools.OperatorService;
+import com.rapidminer.tools.io.Encoding;
 
 
 /**
  * Superclass of all operators that have no input and generate a single output. This class is mainly
  * a tribute to the e-LICO DMO.
  * 
- * @author Simon Fischer
+ * @author Simon Fischer, Jan Czogalla
  */
 public abstract class AbstractReader<T extends IOObject> extends Operator {
 
-	private final OutputPort outputPort = getOutputPorts().createPort("output");
+	protected static final String TRANSFORMER_THREAD_KEY = "AbstractReader.transform_metadata";
+
+	protected final OutputPort outputPort = getOutputPorts().createPort("output");
 	private final Class<? extends IOObject> generatedClass;
 
 	private boolean cacheDirty = true;
+	private AtomicBoolean transformationScheduled = new AtomicBoolean();
 	private MetaData cachedMetaData;
-	private MetaDataError cachedError;
+	private ProcessSetupError cachedError;
+
 
 	public AbstractReader(OperatorDescription description, Class<? extends IOObject> generatedClass) {
 		super(description);
 		this.generatedClass = generatedClass;
-		getTransformer().addRule(new MDTransformationRule() {
-
-			@Override
-			public void transformMD() {
-				if (cacheDirty || !isMetaDataCacheable()) {
-					try {
-						// TODO add extra thread for meta data generation?
-						cachedMetaData = AbstractReader.this.getGeneratedMetaData();
-						cachedError = null;
-					} catch (OperatorException e) {
-						cachedMetaData = new MetaData(AbstractReader.this.generatedClass);
-						String msg = e.getMessage();
-						if ((msg == null) || (msg.length() == 0)) {
-							msg = e.toString();
-						}
-						// will be added below
-						cachedError = new SimpleMetaDataError(Severity.WARNING, outputPort,
-								"cannot_create_exampleset_metadata", new Object[] { msg });
-					}
-					if (cachedMetaData != null) {
-						cachedMetaData.addToHistory(outputPort);
-					}
-					cacheDirty = false;
-				}
-				outputPort.deliverMD(cachedMetaData);
-				if (cachedError != null) {
-					outputPort.addError(cachedError);
-				}
+		ProgressThread mdTransformationThread = createTransformationProgressThread();
+		getTransformer().addRule(() -> {
+			if (!isDirty() && getProcess() != null && getProcess().getDebugMode() == DebugMode.COLLECT_METADATA_AFTER_EXECUTION
+					&& outputPort.getMetaData() != null) {
+				return;
 			}
+			if (!isMetaDataCacheable()) {
+				setCachedMetadataAndError();
+			} else if (cacheDirty) {
+				cachedMetaData = getDefaultMetaData();
+				cachedMetaData.addToHistory(outputPort);
+				cachedError = null;
+				mdTransformationThread.start();
+			}
+			updateOutputPort();
 		});
-		observeParameters();
+		observeParameters(mdTransformationThread);
 	}
 
-	private void observeParameters() {
-		// we add this as the first observer. otherwise, this change is not seen
-		// by the resulting meta data transformation
-		getParameters().addObserverAsFirst(new Observer<String>() {
+	/**
+	 * Creates a {@link ProgressThread} that takes care of transforming the meta data in the background to prevent UI freezes.
+	 * This is intended for long running versions of {@link #getGeneratedMetaData()}.
+	 *
+	 * @see #getGeneratedMetaData()
+	 * @see #isMetaDataCacheable()
+	 * @since 9.2.0
+	 */
+	private ProgressThread createTransformationProgressThread() {
+		ProgressThread progressThread = new ProgressThread(TRANSFORMER_THREAD_KEY, false, getName()) {
 
 			@Override
-			public void update(Observable<String> observable, String arg) {
-				cacheDirty = true;
+			public void start() {
+				if (transformationScheduled.compareAndSet(false, true)) {
+					MetaDataUpdateQueue.registerMDGeneration(getProcess(), this);
+					super.start();
+				}
+			}
+
+			@Override
+			public void run() {
+				setCachedMetadataAndError();
+				cacheDirty = false;
+				updateOutputPort();
+				transformationScheduled.set(false);
+			}
+		};
+		progressThread.setDependencyPopups(false);
+		progressThread.setIndeterminate(true);
+		return progressThread;
+	}
+
+	/**
+	 * Delivers cached {@link MetaData} and updates {@link #outputPort} with cached {@link MetaDataError} if necessary.
+	 *
+	 * @since 9.3.1
+	 */
+	private void updateOutputPort() {
+		outputPort.deliverMD(cachedMetaData);
+		if (cachedError != null) {
+			MetaDataError portError;
+			if (cachedError instanceof MetaDataError) {
+				portError = (MetaDataError) cachedError;
+			} else {
+				portError = new SimpleMetaDataError(cachedError.getSeverity(), outputPort, cachedError.getQuickFixes(),
+						"cannot_create_exampleset_metadata", cachedError.getMessage());
+			}
+			outputPort.addError(portError);
+		}
+	}
+
+	/**
+	 * Sets the {@link #cachedMetaData} to the result of {@link #getGeneratedMetaData()} if possible. If an error occurs,
+	 * sets the {@link #cachedError}.
+	 *
+	 * @since 9.2.0
+	 */
+	private void setCachedMetadataAndError() {
+		try {
+			cachedMetaData = getGeneratedMetaData();
+			cachedError = null;
+			if (cachedMetaData == null) {
+				cachedMetaData = getDefaultMetaData();
+				cachedError = new SimpleMetaDataError(Severity.WARNING, outputPort,
+						"cannot_create_exampleset_metadata", new NullPointerException().getLocalizedMessage());
+			}
+		} catch (OperatorException e) {
+			cachedMetaData = getDefaultMetaData();
+			String msg = e.getMessage();
+			if ((msg == null) || (msg.length() == 0)) {
+				msg = e.toString();
+			}
+
+			// will be added below
+			if (e instanceof UserSetupError) {
+				cachedError = ((UserSetupError) e).getSetupError();
+			} else if (e instanceof UserError && ((UserError) e).getCode() == 317 && getProcess() != null) {
+				cachedError = new ProcessNotInRepositoryMetaDataError(Severity.WARNING, outputPort,
+						Collections.singletonList(new SaveProcessQuickFix(getProcess())),
+						"save_process", msg);
+			} else {
+				cachedError = new SimpleMetaDataError(Severity.WARNING, outputPort,
+						"cannot_create_exampleset_metadata", msg);
+			}
+		}
+		cachedMetaData.addToHistory(outputPort);
+	}
+
+	private void observeParameters(ProgressThread mdTransformationThread) {
+		// we add this as the first observer. otherwise, this change is not seen
+		// by the resulting meta data transformation
+		getParameters().addObserverAsFirst((observable, arg) -> {
+			cacheDirty = true;
+			if (isMetaDataCacheable() && transformationScheduled.compareAndSet(true, false)) {
+				// IMPORTANT NOTE: this only works properly as long as there are no dependencies involved here
+				// If any other pg depends on this one, this will trigger a popup
+				mdTransformationThread.cancel();
 			}
 		}, false);
 	}
 
+	/**
+	 * Returns the generated {@link MetaData} of this reader. This can be a long running operation
+	 * iff {@link #isMetaDataCacheable()} returns {@code true}.
+	 *
+	 * @return the result of {@link #getDefaultMetaData()} by default.
+	 * @throws OperatorException
+	 * 		if an error occurs
+	 * @see #getDefaultMetaData()
+	 */
 	public MetaData getGeneratedMetaData() throws OperatorException {
+		return getDefaultMetaData();
+	}
+
+	/**
+	 * Returns a basic {@link MetaData} object that can be used as a stand-in even if invalid parameters are chosen.
+	 * This method should return immediately and is not suitable for long running operations.
+	 * By default this can return any of the core meta data implementations; these are example sets, collections,
+	 * models (also specific for {@link PredictionModel} and {@link ConfigurableRandomForestModel}).
+	 * For all other {@link IOObject IOObjects} it will return generic meta data.
+	 *
+	 * @return a basic {@link MetaData} object
+	 * @see #getGeneratedMetaData()
+	 * @since 9.2.0
+	 */
+	@SuppressWarnings("unchecked")
+	protected MetaData getDefaultMetaData() {
+		if (ExampleSet.class.isAssignableFrom(generatedClass)) {
+			return new ExampleSetMetaData();
+		}
+		if (IOObjectCollection.class.isAssignableFrom(generatedClass)) {
+			return new CollectionMetaData();
+		}
+		if (Model.class.isAssignableFrom(generatedClass)) {
+			if (PredictionModel.class.isAssignableFrom(generatedClass)) {
+				return new PredictionModelMetaData((Class<? extends PredictionModel>) generatedClass);
+			}
+			if (ConfigurableRandomForestModel.class.isAssignableFrom(generatedClass)) {
+				return new RandomForestModelMetaData();
+			}
+			return new ModelMetaData((Class<? extends Model>) generatedClass, new ExampleSetMetaData());
+		}
 		return new MetaData(generatedClass);
 	}
 
+	/**
+	 * Returns whether this reader's {@link MetaData} is cacheable or not. Meta data should be cacheable
+	 * where the generation of real meta data is expected to be a long running operation.
+	 * As long as the meta data only depends strictly on the parameter values, this should return {@code false}.
+	 * An example for long running meta data
+	 * @return  {@code false} by default.
+	 *
+	 * @see #getGeneratedMetaData()
+	 */
 	protected boolean isMetaDataCacheable() {
 		return false;
 	}
@@ -162,7 +307,7 @@ public abstract class AbstractReader<T extends IOObject> extends Operator {
 		}
 	}
 
-	private static final Map<String, ReaderDescription> READER_DESCRIPTIONS = new HashMap<String, ReaderDescription>();
+	private static final Map<String, ReaderDescription> READER_DESCRIPTIONS = new HashMap<>();
 
 	/** Registers an operator that can read files with a given extension. */
 	protected static void registerReaderDescription(ReaderDescription rd) {
@@ -237,6 +382,17 @@ public abstract class AbstractReader<T extends IOObject> extends Operator {
 	protected void registerOperator(Process process) {
 		super.registerOperator(process);
 		cacheDirty = true;
+	}
+
+	/**
+	 * Returns the cached {@link MetaData}, if any
+	 *
+	 * @return the cached meta data; might be {@code null}
+	 * @see #isMetaDataCacheable()
+	 * @since 9.3
+	 */
+	protected MetaData getCachedMetaData() {
+		return cachedMetaData;
 	}
 
 	protected boolean supportsEncoding() {

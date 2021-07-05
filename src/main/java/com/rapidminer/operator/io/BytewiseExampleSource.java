@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,6 +24,7 @@ import java.util.List;
 
 import com.rapidminer.RapidMiner;
 import com.rapidminer.example.ExampleSet;
+import com.rapidminer.example.Tools;
 import com.rapidminer.example.table.DataRowFactory;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
@@ -31,9 +32,7 @@ import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.generator.ExampleSetGenerator;
 import com.rapidminer.operator.nio.file.FileInputPortHandler;
 import com.rapidminer.operator.ports.InputPort;
-import com.rapidminer.operator.ports.Port;
 import com.rapidminer.parameter.ParameterType;
-import com.rapidminer.parameter.PortProvider;
 import com.rapidminer.parameter.UndefinedParameterError;
 import com.rapidminer.tools.ParameterService;
 import com.rapidminer.tools.parameter.internal.DataManagementParameterHelper;
@@ -100,9 +99,7 @@ public abstract class BytewiseExampleSource extends AbstractExampleSource {
 		}
 
 		// verify that the resulting example set is not empty
-		if (result.size() == 0) {
-			throw new UserError(this, 117);
-		}
+		Tools.isNonEmpty(result);
 		return result;
 	}
 
@@ -276,14 +273,9 @@ public abstract class BytewiseExampleSource extends AbstractExampleSource {
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
 		ParameterType type = FileInputPortHandler.makeFileParameterType(this, PARAMETER_FILENAME,
-				"Name of the file to read the data from.", getFileSuffix(), new PortProvider() {
-
-					@Override
-					public Port getPort() {
-						return fileInputPort;
-					}
-				});
+				"Name of the file to read the data from.", getFileSuffix(), () -> fileInputPort);
 		type.setExpert(false);
+		type.setPrimary(true);
 		types.add(type);
 		DataManagementParameterHelper.addParameterTypes(types, this);
 		return types;

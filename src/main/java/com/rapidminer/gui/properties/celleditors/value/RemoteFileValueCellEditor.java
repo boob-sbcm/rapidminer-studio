@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,15 +23,14 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
-
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 
 import com.rapidminer.gui.RapidMinerGUI;
 import com.rapidminer.gui.properties.DefaultRMCellEditor;
@@ -57,6 +56,8 @@ public class RemoteFileValueCellEditor extends DefaultRMCellEditor implements Pr
 
 	private JPanel container;
 
+	private JButton fileOpenButton;
+
 	public RemoteFileValueCellEditor(final ParameterTypeRemoteFile type) {
 		super(new JTextField());
 		this.container = new JPanel(new GridBagLayout());
@@ -71,34 +72,26 @@ public class RemoteFileValueCellEditor extends DefaultRMCellEditor implements Pr
 		gbc.weightx = 1;
 		container.add(editorComponent, gbc);
 
-		((JTextField) editorComponent).getDocument().addDocumentListener(new DocumentListener() {
-
+		editorComponent.addFocusListener(new FocusAdapter() {
 			@Override
-			public void removeUpdate(DocumentEvent e) {
-				fireEditingStopped();
-
-			}
-
-			@Override
-			public void insertUpdate(DocumentEvent e) {
-				fireEditingStopped();
-
-			}
-
-			@Override
-			public void changedUpdate(DocumentEvent e) {
-				fireEditingStopped();
-
+			public void focusLost(FocusEvent e) {
+				// The event is only fired if the focus loss is permanently,
+				// i.e. it is not fired if the user e.g. just switched to another window.
+				// Otherwise any changes made after switching back to RapidMiner would
+				// not be saved.
+				if (!e.isTemporary()) {
+					fireEditingStopped();
+				}
 			}
 		});
 
-		final JButton fileOpenButton = new JButton();
+		fileOpenButton = new JButton();
 		fileOpenButton.setAction(new ResourceAction(true, "choose_remote_file") {
 
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				fileOpenButton.setEnabled(false);
 				ProgressThread openFileChooserThread = new ProgressThread("open_remote_file_chooser") {
 
@@ -132,17 +125,14 @@ public class RemoteFileValueCellEditor extends DefaultRMCellEditor implements Pr
 						chooser.setFileSelectionMode(type.getFileSelectionMode());
 
 						getProgressListener().setCompleted(80);
-						SwingUtilities.invokeLater(new Runnable() {
-
-							@Override
-							public void run() {
-								int returnvalue = chooser.showOpenDialog(RapidMinerGUI.getMainFrame());
-								if (returnvalue == JFileChooser.APPROVE_OPTION) {
-									((JTextField) editorComponent).setText(type.getRemoteFileSystemView()
-											.getNormalizedPathName(chooser.getSelectedFile()));
-								}
-								fileOpenButton.setEnabled(true);
+						SwingUtilities.invokeLater(() -> {
+							int returnvalue = chooser.showOpenDialog(RapidMinerGUI.getMainFrame());
+							if (returnvalue == JFileChooser.APPROVE_OPTION) {
+								((JTextField) editorComponent).setText(type.getRemoteFileSystemView()
+										.getNormalizedPathName(chooser.getSelectedFile()));
+								fireEditingStopped();
 							}
+							fileOpenButton.setEnabled(true);
 						});
 					}
 
@@ -192,5 +182,10 @@ public class RemoteFileValueCellEditor extends DefaultRMCellEditor implements Pr
 
 	@Override
 	public void setOperator(Operator operator) {}
+
+	@Override
+	public void activate() {
+		fileOpenButton.doClick();
+	}
 
 }

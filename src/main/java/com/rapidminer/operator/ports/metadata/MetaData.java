@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,14 +18,6 @@
 */
 package com.rapidminer.operator.ports.metadata;
 
-import com.rapidminer.gui.renderer.RendererService;
-import com.rapidminer.operator.Annotations;
-import com.rapidminer.operator.IOObject;
-import com.rapidminer.operator.ProcessSetupError.Severity;
-import com.rapidminer.operator.ports.InputPort;
-import com.rapidminer.operator.ports.OutputPort;
-import com.rapidminer.tools.RMUrlHandler;
-
 import java.io.IOException;
 import java.io.ObjectStreamException;
 import java.io.Serializable;
@@ -35,6 +27,16 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+
+import com.rapidminer.adaption.belt.AtPortConverter;
+import com.rapidminer.gui.renderer.RendererService;
+import com.rapidminer.operator.Annotations;
+import com.rapidminer.operator.IOObject;
+import com.rapidminer.operator.ProcessSetupError.Severity;
+import com.rapidminer.operator.ports.InputPort;
+import com.rapidminer.operator.ports.OutputPort;
+import com.rapidminer.tools.RMUrlHandler;
+import com.rapidminer.versioning.repository.DataSummary;
 
 
 /**
@@ -48,7 +50,7 @@ import java.util.Map;
  * 
  * @author Simon Fischer
  */
-public class MetaData implements Serializable {
+public class MetaData implements DataSummary, Serializable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -84,15 +86,25 @@ public class MetaData implements Serializable {
 	}
 
 	public MetaData(Class<? extends IOObject> dataClass) {
-		this(dataClass, Collections.<String, Object> emptyMap());
+		this.dataClass = dataClass;
 	}
 
+	/**
+	 * @deprecated since 9.7, never used, confusing and unnecessary, will be removed in the near future. Use {@link
+	 * #MetaData(Class)} instead and call {@link MetaData#addAdditionalData(String, Object)} if needed.
+	 */
+	@Deprecated
 	public MetaData(Class<? extends IOObject> dataClass, String key, Object value) {
 		this(dataClass, Collections.singletonMap(key, value));
 	}
 
+	/**
+	 * @deprecated since 9.7, never used, confusing and unnecessary, will be removed in the near future. Use {@link
+	 * #MetaData(Class)} instead and call {@link MetaData#addAdditionalData(String, Object)} if needed.
+	 */
+	@Deprecated
 	public MetaData(Class<? extends IOObject> dataClass, Map<String, Object> keyValueMap) {
-		this.dataClass = dataClass;
+		this(dataClass);
 		this.keyValueMap.putAll(keyValueMap);
 	}
 
@@ -127,11 +139,52 @@ public class MetaData implements Serializable {
 		return dataClass;
 	}
 
+	/**
+	 * @deprecated since 9.7, ambiguous naming, will be removed in the near future. Use {@link
+	 * #getAdditionalData(String)} instead.
+	 */
+	@Deprecated
 	public Object getMetaData(String key) {
+		return getAdditionalData(key);
+	}
+
+	/**
+	 * @deprecated since 9.7, ambiguous naming, will be removed in the near future. Use {@link
+	 * #addAdditionalData(String, Object)} instead.
+	 */
+	@Deprecated
+	public Object putMetaData(String key, Object value) {
+		return keyValueMap.put(key, value);
+	}
+
+	/**
+	 * Gets additional data that was added to this meta data instance. See {@link #addAdditionalData(String, Object)}.
+	 * <p>
+	 * Attention: Additional data is NOT persisted on disk, the data only lives during the lifetime of this meta data
+	 * instance!
+	 * </p>
+	 *
+	 * @param key the key under which the data was stored, must not be {@code null}
+	 * @return the data or {@code null} if no data was stored under the given key
+	 * @since 9.7
+	 */
+	public Object getAdditionalData(String key) {
 		return keyValueMap.get(key);
 	}
 
-	public Object putMetaData(String key, Object value) {
+	/**
+	 * Adds additional data to this meta data instance. See {@link #getAdditionalData(String)}.
+	 * <p>
+	 * Attention: Additional data is NOT persisted on disk, the data only lives during the lifetime of this meta data
+	 * instance!
+	 * </p>
+	 *
+	 * @param key   the key under which the data should be stored, must not be {@code null}
+	 * @param value the value which should be stored for the given key
+	 * @return the previous value stored under the given key, can be {@code null}
+	 * @since 9.7
+	 */
+	public Object addAdditionalData(String key, Object value) {
 		return keyValueMap.put(key, value);
 	}
 
@@ -164,8 +217,13 @@ public class MetaData implements Serializable {
 		return getObjectClass().getSimpleName() + (keyValueMap.isEmpty() ? "" : (" hints: " + keyValueMap.toString()));
 	}
 
+	@Override
+	public String getSummary() {
+		return getDescription();
+	}
+
 	public String getDescription() {
-		String name = RendererService.getName(dataClass);
+		String name = getTitleForDescription();
 		if (name == null) {
 			name = dataClass.getSimpleName();
 		}
@@ -182,6 +240,17 @@ public class MetaData implements Serializable {
 			desc.append("</ul>");
 		}
 		return desc.toString();
+	}
+
+	/**
+	 * Returns the title that is used in the {@link #getDescription()} method
+	 * <p>The default implementation checks {@link RendererService#getName}</p>
+	 * <p>If this method returns {@code null}, the {@link Class#getSimpleName()} of the data class is used.</p>
+	 *
+	 * @return the description title, might contain html
+	 */
+	protected String getTitleForDescription() {
+		return RendererService.getName(dataClass);
 	}
 
 	/**
@@ -202,7 +271,8 @@ public class MetaData implements Serializable {
 	 *            the data received by the port
 	 */
 	public Collection<MetaDataError> getErrorsForInput(InputPort inputPort, MetaData isData, CompatibilityLevel level) {
-		if (!this.dataClass.isAssignableFrom(isData.dataClass)) {
+		if (!this.dataClass.isAssignableFrom(isData.dataClass) &&
+				!AtPortConverter.isConvertible(this.dataClass, isData.dataClass)) {
 			return Collections.<MetaDataError> singletonList(new InputMissingMetaDataError(inputPort, this.getObjectClass(),
 					isData.getObjectClass()));
 		}
@@ -238,5 +308,23 @@ public class MetaData implements Serializable {
 
 	public void setAnnotations(Annotations annotations) {
 		this.annotations = annotations;
+	}
+
+	/**
+	 * Shrinks the values of the meta data, if possible. For now, this is only done for number of nominal values in
+	 * {@link ExampleSetMetaData}.
+	 *
+	 * @param metaData
+	 * 		the meta data to try to shrink
+	 * @since 9.3.2
+	 */
+	public static void shrinkValues(MetaData metaData) {
+		if (metaData instanceof ExampleSetMetaData) {
+			for (AttributeMetaData amd : ((ExampleSetMetaData) metaData).getAllAttributes()) {
+				if (amd.isNominal()) {
+					amd.shrinkValueSet();
+				}
+			}
+		}
 	}
 }

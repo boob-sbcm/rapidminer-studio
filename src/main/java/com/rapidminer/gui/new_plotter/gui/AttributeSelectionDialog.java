@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -50,7 +50,9 @@ import com.rapidminer.tools.I18N;
  * A dialog to select a subset of attributes.
  *
  * @author Tobias Malbrecht, Nils Woehler
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class AttributeSelectionDialog extends ButtonDialog {
 
 	private static final long serialVersionUID = 5396725165122306231L;
@@ -76,7 +78,7 @@ public class AttributeSelectionDialog extends ButtonDialog {
 		private static final long serialVersionUID = -3046621278306353077L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			int[] indices = itemList.getSelectedIndices();
 			itemList.setSelectedIndices(new int[] {});
 			for (int i = indices.length - 1; i >= 0; i--) {
@@ -94,7 +96,7 @@ public class AttributeSelectionDialog extends ButtonDialog {
 		private static final long serialVersionUID = -3046621278306353077L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			int[] indices = selectedItemList.getSelectedIndices();
 			selectedItemList.setSelectedIndices(new int[] {});
 			for (int i = indices.length - 1; i >= 0; i--) {
@@ -130,7 +132,7 @@ public class AttributeSelectionDialog extends ButtonDialog {
 			private static final long serialVersionUID = -3046621278306353077L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				itemSearchField.clearFilter();
 			}
 		});
@@ -193,7 +195,7 @@ public class AttributeSelectionDialog extends ButtonDialog {
 			private static final long serialVersionUID = -3046621278306353032L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				selectedItemSearchField.clearFilter();
 			}
 		});

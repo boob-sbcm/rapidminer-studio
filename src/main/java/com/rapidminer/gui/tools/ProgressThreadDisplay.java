@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,8 +24,10 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-
+import java.util.Map;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -110,7 +112,7 @@ class ProgressThreadDisplay extends JPanel {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				pg.cancel();
 			}
 		});
@@ -140,12 +142,19 @@ class ProgressThreadDisplay extends JPanel {
 		sb.append("<br/>");
 		if (isQueued) {
 			List<String> dependencies = pg.getDependencies();
-			if (dependencies.size() > 0) {
+
+			if (!dependencies.isEmpty()) {
+				ArrayList<ProgressThread> all = new ArrayList<>(ProgressThread.getQueuedThreads());
+				all.addAll(ProgressThread.getCurrentThreads());
+				Map<String, String> keyToName = new HashMap<>();
+				for (ProgressThread progressThread : all) {
+					keyToName.put(progressThread.getID(), progressThread.getName());
+				}
 				sb.append("<font color=\"#6E6E6E\" size=\"-2\">");
 				sb.append("Depends on: ");
 				for (int i = 0; i < dependencies.size(); i++) {
 					String dependency = dependencies.get(i);
-					sb.append(I18N.getGUIMessage("gui.progress." + dependency + ".label"));
+					sb.append(keyToName.getOrDefault(dependency, I18N.getGUIMessage("gui.progress." + dependency + ".label")));
 					if (i < dependencies.size() - 1) {
 						sb.append(", ");
 					}

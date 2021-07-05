@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,7 +19,9 @@
 package com.rapidminer.operator.learner.functions;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Attributes;
@@ -50,7 +52,7 @@ public class SeeminglyUnrelatedRegressionModel extends PredictionModel {
 	private ArrayList<String[]> usedAttributeNames;
 	private ArrayList<String> labelNames;
 	private double[] coefficients;
-
+	
 	protected SeeminglyUnrelatedRegressionModel(ExampleSet trainingExampleSet, ArrayList<String[]> usedAttributeNames,
 			ArrayList<String> labelNames, double[] coefficients) {
 		super(trainingExampleSet, ExampleSetUtilities.SetsCompareOption.ALLOW_SUPERSET,
@@ -65,10 +67,13 @@ public class SeeminglyUnrelatedRegressionModel extends PredictionModel {
 		checkCompatibility(exampleSet);
 		exampleSet = (ExampleSet) exampleSet.clone();
 
+		Set<String> usedLabelNames = new HashSet<>();
+
 		// creating labels
 		Attribute[] predictedLabels = new Attribute[labelNames.size()];
 		for (int i = 0; i < labelNames.size(); i++) {
-			String labelName = labelNames.get(i);
+			String labelName = generateLabelName(usedLabelNames, labelNames.get(i), i + 1);
+
 			predictedLabels[i] = AttributeFactory.createAttribute("prediction(" + labelName + ")", Ontology.REAL);
 			exampleSet.getExampleTable().addAttribute(predictedLabels[i]);
 			exampleSet.getAttributes().addRegular(predictedLabels[i]);
@@ -118,10 +123,10 @@ public class SeeminglyUnrelatedRegressionModel extends PredictionModel {
 		return exampleSet;
 	}
 
-	@Override
 	/**
 	 * This method isn't called at all, since we have overridden the calling method.
 	 */
+	@Override
 	public ExampleSet performPrediction(ExampleSet exampleSet, Attribute predictedLabel) throws OperatorException {
 		return null;
 	}
@@ -167,26 +172,57 @@ public class SeeminglyUnrelatedRegressionModel extends PredictionModel {
 
 	@Override
 	public String toString() {
-		StringBuffer result = new StringBuffer();
+		StringBuilder result = new StringBuilder();
 		int j = 0;
 		int coeffIndex = 0;
 		for (String labelName : labelNames) {
-			result.append(Tools.getLineSeparators(2) + labelName + Tools.getLineSeparators(2));
+			result.append(Tools.getLineSeparators(2)).append(labelName).append(Tools.getLineSeparators(2));
 			String[] selectedAttributes = usedAttributeNames.get(j);
 
 			// bias
-			result.append(getCoefficientString(coefficients[coeffIndex], true) + Tools.getLineSeparator());
+			result.append(getCoefficientString(coefficients[coeffIndex], true)).append(Tools.getLineSeparator());
 			coeffIndex++;
 
 			// coefficients
-			for (int i = 0; i < selectedAttributes.length; i++) {
-				result.append(getCoefficientString(coefficients[coeffIndex], false) + " * " + selectedAttributes[i]
-						+ Tools.getLineSeparator());
+			for (String selectedAttribute : selectedAttributes) {
+				result.append(getCoefficientString(coefficients[coeffIndex], false)).append(" * ").append(selectedAttribute).append(Tools.getLineSeparator());
 				coeffIndex++;
 			}
 			j++;
 		}
 		return result.toString();
+	}
+	
+	/**
+	 * Generates label names that will be used in the prediction attributes.
+	 * Resolves collisions between label names by generating a unique postfix if necessary.
+	 * If all label names are different, this method does not change the names.
+	 * 
+	 * @param usedLabelNames
+	 *             Already accepted unique label names
+	 * @param originalLabelName 
+	 *             The label name to be inserted
+	 * @param portIndex
+	 *             The input port index of the unrelated ExampleSet holding {@code originalLabelName} as label
+	 * @return the label name, never {@code null}
+	 */
+	private static String generateLabelName(Set<String> usedLabelNames, String originalLabelName, int portIndex) {
+		String labelName = originalLabelName;
+		
+		if (!usedLabelNames.contains(labelName)) {
+			usedLabelNames.add(labelName);
+			return labelName;
+		}
+		
+		originalLabelName = originalLabelName + "_port" + portIndex;
+		labelName = originalLabelName;
+		
+		int i = 1;
+		while (usedLabelNames.contains(labelName)) {
+			labelName = originalLabelName + "_" + i ++;
+		}
+		usedLabelNames.add(labelName);
+		return labelName;
 	}
 
 	private String getCoefficientString(double coefficient, boolean first) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -37,6 +37,7 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EtchedBorder;
 
+import com.rapidminer.gui.ApplicationFrame;
 import com.rapidminer.gui.properties.tablepanel.TablePanel;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.ResourceActionAdapter;
@@ -101,7 +102,7 @@ public class FilterPropertyDialog extends PropertyDialog {
 			private static final long serialVersionUID = 2265489760585034488L;
 
 			@Override
-			public void actionPerformed(final ActionEvent e) {
+			public void loggedActionPerformed(final ActionEvent e) {
 				okAction();
 			}
 		});
@@ -118,7 +119,7 @@ public class FilterPropertyDialog extends PropertyDialog {
 			private static final long serialVersionUID = 5289974084350157673L;
 
 			@Override
-			public void actionPerformed(final ActionEvent e) {
+			public void loggedActionPerformed(final ActionEvent e) {
 				innerPanel.getModel().appendRow();
 			}
 		});
@@ -133,7 +134,7 @@ public class FilterPropertyDialog extends PropertyDialog {
 			private static final long serialVersionUID = -7003906588940462016L;
 
 			@Override
-			public void actionPerformed(final ActionEvent e) {} // only used as a flag
+			public void loggedActionPerformed(final ActionEvent e) {} // only used as a flag
 
 		});
 		radioButtonAND.setSelected(true);
@@ -142,7 +143,7 @@ public class FilterPropertyDialog extends PropertyDialog {
 			private static final long serialVersionUID = -7003906588940462016L;
 
 			@Override
-			public void actionPerformed(final ActionEvent e) {} // only used as a flag
+			public void loggedActionPerformed(final ActionEvent e) {} // only used as a flag
 
 		});
 
@@ -151,7 +152,7 @@ public class FilterPropertyDialog extends PropertyDialog {
 			private static final long serialVersionUID = -7003906588940462016L;
 
 			@Override
-			public void actionPerformed(final ActionEvent e) {
+			public void loggedActionPerformed(final ActionEvent e) {
 
 				if (checkBoxMetadata.isSelected()) {
 					model.setCheckMetaDataForComparators(true);
@@ -200,7 +201,7 @@ public class FilterPropertyDialog extends PropertyDialog {
 		buttonPanel.add(cancelButton, gbc);
 
 		panel.add(innerPanel, BorderLayout.CENTER);
-		setLocationRelativeTo(null);
+		setLocationRelativeTo(ApplicationFrame.getApplicationFrame());
 		setDefaultSize(ButtonDialog.LARGE);
 		layoutDefault(panel, buttonPanel);
 	}

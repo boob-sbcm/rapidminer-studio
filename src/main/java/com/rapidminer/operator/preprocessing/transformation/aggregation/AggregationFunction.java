@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -19,8 +19,9 @@
 package com.rapidminer.operator.preprocessing.transformation.aggregation;
 
 import java.lang.reflect.Constructor;
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -49,11 +50,11 @@ import com.rapidminer.tools.Ontology;
  *
  * The list of the names of all available functions can be queried from the static method
  * {@link #getAvailableAggregationFunctionNames()}. With a name one can call the static method
- * {@link #createAggregationFunction(String, Attribute)} to create a certain aggregator for the
+ * {@link #createAggregationFunction} to create a certain aggregator for the
  * actual counting.
  *
  * Additional functions can be registered by calling
- * {@link #registerNewAggregationFunction(String, Class)} from extensions, preferable during their
+ * {@link #registerNewAggregationFunction} from extensions, preferable during their
  * initialization. Please notice that there will be no warning prior process execution if the
  * extension is missing but the usage of it's function is still configured.
  *
@@ -80,62 +81,76 @@ public abstract class AggregationFunction {
 	public static final String FUNCTION_NAME_MAXIMUM = "maximum";
 	public static final String FUNCTION_NAME_LOG_PRODUCT = "log product";
 	public static final String FUNCTION_NAME_PRODOCT = "product";
+	public static final String FUNCTION_NAME_PERCENTILE = "percentile (75)";
 	public static final String FUNCTION_NAME_MODE = "mode";
 	public static final String FUNCTION_NAME_LEAST = "least";
 	public static final String FUNCTION_NAME_LEAST_ONLY_OCCURRING = "least (only occurring)";
 	public static final String FUNCTION_NAME_CONCATENATION = "concatenation";
 
-	public static final Map<String, Class<? extends AggregationFunction>> AGGREATION_FUNCTIONS = new TreeMap<>();
+	/**
+	 * Indicates when to use a map instead of full array for nominal mapping counting
+	 *
+	 * @since 9.7
+	 */
+	public static final int MAX_MAPPING_SIZE = 1000;
+	/**
+	 * Fill ratio of {@link #MAX_MAPPING_SIZE} maps. When a map get's too big, switch back to full array.
+	 *
+	 * @since 9.7
+	 */
+	public static final int MAP_FILL_RATIO = 5;
+
+	private static final List<AggregationFunction> CUSTOMIZABLE_AGGREGATION_FUNCTIONS = new ArrayList<>();
+
+	private static final Map<String, Class<? extends AggregationFunction>> AGGREGATION_FUNCTIONS = new TreeMap<>();
+
 	static {
 		// numerical/date
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_SUM, SumAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_SUM_FRACTIONAL, SumFractionalAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_MEDIAN, MedianAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_AVERAGE, MeanAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_VARIANCE, VarianceAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_STANDARD_DEVIATION, StandardDeviationAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_MINIMUM, MinAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_MAXIMUM, MaxAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_SUM, SumAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_SUM_FRACTIONAL, SumFractionalAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_MEDIAN, MedianAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_AVERAGE, MeanAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_VARIANCE, VarianceAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_STANDARD_DEVIATION, StandardDeviationAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_MINIMUM, MinAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_MAXIMUM, MaxAggregationFunction.class);
 
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_LOG_PRODUCT, LogProductAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_PRODOCT, ProductAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_LOG_PRODUCT, LogProductAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_PRODOCT, ProductAggregationFunction.class);
+
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_PERCENTILE, PercentileAggregationFunction.class);
 
 		// numerical/date/nominal
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_IGNORE_MISSINGS, CountIgnoringMissingsAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_INCLUDE_MISSINGS, CountIncludingMissingsAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_COUNT, CountAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_FRACTIONAL, CountFractionalAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_PERCENTAGE, CountPercentageAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_IGNORE_MISSINGS, CountIgnoringMissingsAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_INCLUDE_MISSINGS, CountIncludingMissingsAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_COUNT, CountAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_FRACTIONAL, CountFractionalAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_COUNT_PERCENTAGE, CountPercentageAggregationFunction.class);
 
 		// Nominal Aggregations
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_MODE, ModeAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_LEAST, LeastAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_LEAST_ONLY_OCCURRING, LeastOccurringAggregationFunction.class);
-		AGGREATION_FUNCTIONS.put(FUNCTION_NAME_CONCATENATION, ConcatAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_MODE, ModeAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_LEAST, LeastAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_LEAST_ONLY_OCCURRING, LeastOccurringAggregationFunction.class);
+		AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_CONCATENATION, ConcatAggregationFunction.class);
+
+		// customizable
+		CUSTOMIZABLE_AGGREGATION_FUNCTIONS.add(new PercentileAggregationFunction(
+				AttributeFactory.createAttribute("none", Ontology.NUMERICAL), true, true));
 	}
 
 	/**
-	 * This map contains legacy aggregation function names and the class, which contains the legacy
-	 * functionality. Each of the map elements has to be represented in the
-	 * LEGACY_AGGREATION_FUNCTIONS_VERSIONS map, too.
+	 * This map contains legacy aggregation function names, version and class, which contains the legacy
+	 * functionality.
 	 */
-	private static final Map<String, Class<? extends AggregationFunction>> LEGACY_AGGREATION_FUNCTIONS = new TreeMap<>();
+	private static final Map<String, Map.Entry<OperatorVersion, Class<? extends AggregationFunction>>> LEGACY_AGGREGATION_FUNCTIONS = new HashMap<>();
 	static {
 		// median has been replaced after version 7.4.1
-		LEGACY_AGGREATION_FUNCTIONS.put(FUNCTION_NAME_MEDIAN, MedianAggregationFunctionLegacy.class);
+		LEGACY_AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_MEDIAN, new AbstractMap.SimpleEntry<>(AggregationOperator.VERSION_7_4_0, MedianAggregationFunctionLegacy.class));
+		// concatenation has been changed after version 8.2.0
+		LEGACY_AGGREGATION_FUNCTIONS.put(FUNCTION_NAME_CONCATENATION, new AbstractMap.SimpleEntry<>(AggregationOperator.VERSION_8_2_0, ConcatAggregationFunctionLegacy.class));
 	}
 
-	/**
-	 * This map contains legacy aggregation function names and the {@link OperatorVersion} until the
-	 * legacy function should be used. Each of the map elements has to be represented in the
-	 * LEGACY_AGGREATION_FUNCTIONS map, too.
-	 */
-	private static final Map<String, OperatorVersion> LEGACY_AGGREATION_FUNCTIONS_VERSIONS = new TreeMap<>();
-	static {
-		LEGACY_AGGREATION_FUNCTIONS_VERSIONS.put(FUNCTION_NAME_MEDIAN, AggregationOperator.VERSION_7_4_0);
-	}
-
-	public static final Map<String, AggregationFunctionMetaDataProvider> AGGREGATION_FUNCTIONS_META_DATA_PROVIDER = new HashMap<>();
+	private static final Map<String, AggregationFunctionMetaDataProvider> AGGREGATION_FUNCTIONS_META_DATA_PROVIDER = new HashMap<>();
 	static {
 		HashMap<Integer, Integer> transformationRules = new HashMap<Integer, Integer>() {
 
@@ -291,19 +306,7 @@ public abstract class AggregationFunction {
 	 */
 	public static final AggregationFunction createAggregationFunction(String name, Attribute sourceAttribute,
 			boolean ignoreMissings, boolean countOnlyDistinct) throws OperatorException {
-		Class<? extends AggregationFunction> aggregationFunctionClass = AGGREATION_FUNCTIONS.get(name);
-		if (aggregationFunctionClass == null) {
-			throw new UserError(null, "aggregation.illegal_function_name", name);
-		}
-		try {
-			Constructor<? extends AggregationFunction> constructor = aggregationFunctionClass.getConstructor(Attribute.class,
-					boolean.class, boolean.class);
-			return constructor.newInstance(sourceAttribute, ignoreMissings, countOnlyDistinct);
-		} catch (Exception e) {
-			throw new RuntimeException(
-					"All implementations of AggregationFunction need to have a constructor accepting an Attribute and boolean. Other reasons for this error may be class loader problems.",
-					e);
-		}
+		return createAggregationFunction(name, sourceAttribute, ignoreMissings, countOnlyDistinct, null);
 	}
 
 	/**
@@ -318,21 +321,32 @@ public abstract class AggregationFunction {
 	 */
 	public static final AggregationFunction createAggregationFunction(String name, Attribute sourceAttribute,
 			boolean ignoreMissings, boolean countOnlyDistinct, OperatorVersion version) throws OperatorException {
+		if (name == null) {
+			throw new UserError(null, "aggregation.illegal_function_name", name);
+		}
+
 		Class<? extends AggregationFunction> aggregationFunctionClass = null;
 		// check if the legacy version should be used
-		Iterator<String> iterator = LEGACY_AGGREATION_FUNCTIONS.keySet().iterator();
-		while (iterator.hasNext()) {
-			String current = iterator.next();
-			if (name.equals(current) && version.isAtMost(LEGACY_AGGREATION_FUNCTIONS_VERSIONS.get(current))) {
-				aggregationFunctionClass = LEGACY_AGGREATION_FUNCTIONS.get(current);
-				break;
+		if (version != null && LEGACY_AGGREGATION_FUNCTIONS.containsKey(name) && version.isAtMost(LEGACY_AGGREGATION_FUNCTIONS.get(name).getKey())) {
+			aggregationFunctionClass = LEGACY_AGGREGATION_FUNCTIONS.get(name).getValue();
+		}
+		// the percentile aggregation is customizable so Map.get() will not find it, so we look for it here
+		if (aggregationFunctionClass == null) {
+			for (AggregationFunction function : CUSTOMIZABLE_AGGREGATION_FUNCTIONS) {
+				if(function.matches(name)) {
+					return function.newInstance(name, sourceAttribute, ignoreMissings, countOnlyDistinct);
+				}
 			}
 		}
 		if (aggregationFunctionClass == null) {
-			aggregationFunctionClass = AGGREATION_FUNCTIONS.get(name);
+			aggregationFunctionClass = AGGREGATION_FUNCTIONS.get(name);
 		}
 		if (aggregationFunctionClass == null) {
 			throw new UserError(null, "aggregation.illegal_function_name", name);
+		}
+		// ignore missings on old versions using mode
+		if (version != null && FUNCTION_NAME_MODE.equals(name) && version.isAtMost(AggregationOperator.VERSION_8_2_0)) {
+			ignoreMissings = true;
 		}
 		try {
 			Constructor<? extends AggregationFunction> constructor = aggregationFunctionClass.getConstructor(Attribute.class,
@@ -340,7 +354,7 @@ public abstract class AggregationFunction {
 			return constructor.newInstance(sourceAttribute, ignoreMissings, countOnlyDistinct);
 		} catch (Exception e) {
 			throw new RuntimeException(
-					"All implementations of AggregationFunction need to have a constructor accepting an Attribute and boolean. Other reasons for this error may be class loader problems.",
+					"All implementations of AggregationFunction need to have a constructor accepting an Attribute and two boolean. Other reasons for this error may be class loader problems.",
 					e);
 		}
 	}
@@ -356,8 +370,16 @@ public abstract class AggregationFunction {
 	 */
 	public static final AttributeMetaData getAttributeMetaData(String aggregationFunctionName,
 			AttributeMetaData sourceAttributeMetaData, InputPort inputPort) {
-		AggregationFunctionMetaDataProvider metaDataProvider = AGGREGATION_FUNCTIONS_META_DATA_PROVIDER
-				.get(aggregationFunctionName);
+		AggregationFunctionMetaDataProvider metaDataProvider = null;
+		// check if it is a customizable aggregation function like percentile
+		for (AggregationFunction function : CUSTOMIZABLE_AGGREGATION_FUNCTIONS) {
+			if(function.matches(aggregationFunctionName)){
+				metaDataProvider = function.createMetaDataProvider(aggregationFunctionName);
+			}
+		}
+		if (metaDataProvider == null) {
+			metaDataProvider = AGGREGATION_FUNCTIONS_META_DATA_PROVIDER.get(aggregationFunctionName);
+		}
 		if (metaDataProvider != null) {
 			return metaDataProvider.getTargetAttributeMetaData(sourceAttributeMetaData, inputPort);
 		} else {
@@ -371,18 +393,61 @@ public abstract class AggregationFunction {
 	}
 
 	/**
+	 * If this implementation subclass is included in the CUSTOMIZABLE_AGGREGATION_FUNCTIONS list, during collecting
+	 * metadata information this method gets called and gives the possibility to generate specialized metadata
+	 * information based on the aggregationFunctionName from the parameters.
+	 *
+	 * @param aggregationFunctionName
+	 * 		the customizable aggregation function name (like "percentile(23)")
+	 * @return a specialized {@link com.rapidminer.parameter.MetaDataProvider} or null
+	 * @since 9.0.3
+	 */
+	protected AggregationFunctionMetaDataProvider createMetaDataProvider(String aggregationFunctionName) {
+		return null;
+	}
+
+	/**
+	 * If this implementation subclass is included in the CUSTOMIZABLE_AGGREGATION_FUNCTIONS list, this method can be
+	 * overridden to match the customizable aggregationFunctionName.
+	 *
+	 * @param aggregationFunctionName
+	 * 		the customizable aggregation function name (like "percentile(23)")
+	 * @return true if this is a valid customized aggregationFunctionName
+	 * @since 9.0.3
+	 */
+	protected boolean matches(String aggregationFunctionName) {
+		// equals would be nice here but this function seems to have no name
+		return false;
+	}
+
+	/**
+	 * If this implementation subclass is included in the CUSTOMIZABLE_AGGREGATION_FUNCTIONS list, this method gets called
+	 * to generate a new instance of the implementation with the customized aggregationFunctionName which needs to be parsed
+	 * by the factory method to make use of the provided input.
+	 *
+	 * @param aggregationFunctionName
+	 * 		the customizable aggregation function name (like "percentile(23)")
+	 * @param sourceAttribute
+	 * 		see AggregationFunction constructor
+	 * @param ignoreMissings
+	 * 		see AggregationFunction constructor
+	 * @param countOnlyDistinct
+	 * 		see AggregationFunction constructor
+	 * @return an AggregationFunction instance
+	 * @throws UserError
+	 * 		in case the instantiation is not possible
+	 */
+	protected <T extends AggregationFunction> T newInstance(String aggregationFunctionName, Attribute sourceAttribute,
+															boolean ignoreMissings, boolean countOnlyDistinct) throws UserError {
+		return null;
+	}
+
+	/**
 	 * This method will return the array containing the names of all available aggregation
 	 * functions. The names are sorted according to natural ordering.
 	 */
 	public static String[] getAvailableAggregationFunctionNames() {
-		String[] names = new String[AGGREATION_FUNCTIONS.size()];
-		int i = 0;
-		for (String name : AGGREATION_FUNCTIONS.keySet()) {
-			names[i] = name;
-			i++;
-		}
-
-		return names;
+		return AGGREGATION_FUNCTIONS.keySet().toArray(new String[0]);
 	}
 
 	/**
@@ -415,7 +480,7 @@ public abstract class AggregationFunction {
 	 */
 	public static void registerNewAggregationFunction(String name, Class<? extends AggregationFunction> clazz,
 			AggregationFunctionMetaDataProvider metaDataProvider) {
-		AGGREATION_FUNCTIONS.put(name, clazz);
+		AGGREGATION_FUNCTIONS.put(name, clazz);
 		AGGREGATION_FUNCTIONS_META_DATA_PROVIDER.put(name, metaDataProvider);
 	}
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -25,8 +25,9 @@ import com.rapidminer.gui.plotter.charts.AbstractChartPanel.SelectionListener;
  * This interface provides the hook for registering own selection listener.
  * 
  * @author Sebastian Land
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public interface SelectablePlotter {
 
 	/**

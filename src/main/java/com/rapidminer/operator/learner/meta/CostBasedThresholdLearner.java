@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -100,9 +100,7 @@ public class CostBasedThresholdLearner extends AbstractMetaLearner {
 		List<String[]> classWeights = getParameterList(PARAMETER_CLASS_WEIGHTS);
 
 		// some checks
-		if (!exampleSet.getAttributes().getLabel().isNominal()) {
-			throw new UserError(this, 101, getName(), label.getName());
-		}
+		com.rapidminer.example.Tools.hasNominalLabels(exampleSet, getOperatorClassName());
 
 		if (classWeights.size() == 0) {
 			throw new UndefinedParameterError(PARAMETER_CLASS_WEIGHTS, this);
@@ -212,6 +210,7 @@ public class CostBasedThresholdLearner extends AbstractMetaLearner {
 				new ParameterTypeString("class_name", "The name of the class."), new ParameterTypeDouble("weight",
 						"The weight for this class.", 0.0d, Double.POSITIVE_INFINITY, 1.0d));
 		type.setExpert(false);
+		type.setPrimary(true);
 		types.add(type);
 
 		types.add(new ParameterTypeBoolean(

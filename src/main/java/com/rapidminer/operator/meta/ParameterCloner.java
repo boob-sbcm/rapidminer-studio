@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -184,11 +184,13 @@ public class ParameterCloner extends Operator {
 	@Override
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
-		types.add(new ParameterTypeList(PARAMETER_NAME_MAP,
+		ParameterType type = new ParameterTypeList(PARAMETER_NAME_MAP,
 				"A list mapping operator parameters from the set to other operator parameters in the process setup.",
 				new ParameterTypeString("source",
 						"The source parameter, specified as 'operator'.'parameter'. This value is copied to the target parameter."),
-				new ParameterTypeString("target", "The target parameter, specified as 'operator'.'parameter'."), false));
+				new ParameterTypeString("target", "The target parameter, specified as 'operator'.'parameter'."), false);
+		type.setPrimary(true);
+		types.add(type);
 		return types;
 	}
 }

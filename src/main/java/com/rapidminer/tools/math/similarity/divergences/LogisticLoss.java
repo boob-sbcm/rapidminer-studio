@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -24,6 +24,7 @@ import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.Tools;
 import com.rapidminer.operator.OperatorException;
+import com.rapidminer.operator.UserError;
 import com.rapidminer.tools.math.similarity.BregmanDivergence;
 
 
@@ -47,15 +48,13 @@ public class LogisticLoss extends BregmanDivergence {
 		Tools.onlyNumericalAttributes(exampleSet, "value based similarities");
 		Attributes attributes = exampleSet.getAttributes();
 		if (attributes.size() != 1) {
-			throw new OperatorException(
-					"The bregman divergence you've choosen is not applicable for the dataset! Proceeding with the 'Squared Euclidean distance' bregman divergence.");
+			throw new UserError(null, "inapplicable_bregman_divergence.multiple", toString());
 		}
 		for (Attribute attribute : attributes) {
 			for (Example example : exampleSet) {
 				double value = example.getValue(attribute);
 				if (value <= 0 || value >= 1) {
-					throw new OperatorException(
-							"The bregman divergence you've choosen is not applicable for the dataset! Proceeding with the 'Squared Euclidean distance' bregman divergence.");
+					throw new UserError(null, "inapplicable_bregman_divergence.range", toString());
 				}
 			}
 		}

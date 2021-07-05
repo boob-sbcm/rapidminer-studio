@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -57,14 +57,7 @@ public enum StartupDialogRegistry {
 		if (provider == null) {
 			throw new NoStartupDialogRegistreredException();
 		} else {
-			SwingTools.invokeLater(new Runnable() {
-
-				@Override
-				public void run() {
-					provider.show(startButton);
-				}
-
-			});
+			SwingTools.invokeLater(() -> provider.show(startButton));
 		}
 	}
 }

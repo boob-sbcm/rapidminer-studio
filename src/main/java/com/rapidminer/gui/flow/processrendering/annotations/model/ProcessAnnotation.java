@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -133,7 +133,7 @@ public class ProcessAnnotation extends WorkflowAnnotation {
 				- OperatorAnnotation.DEFAULT_WIDTH / 2;
 		int y = (int) ProcessLayoutXMLFilter.lookupOperatorRectangle(attachedTo).getMaxY() + OperatorAnnotation.Y_OFFSET;
 		int height = AnnotationDrawUtils.getContentHeight(AnnotationDrawUtils.createStyledCommentString(comment, getStyle()),
-				OperatorAnnotation.DEFAULT_WIDTH);
+				OperatorAnnotation.DEFAULT_WIDTH, AnnotationDrawUtils.ANNOTATION_FONT);
 		boolean overflowing = false;
 		if (height > OperatorAnnotation.MAX_HEIGHT) {
 			height = OperatorAnnotation.MAX_HEIGHT;

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -103,19 +103,22 @@ public class MultiClassificationPerformance extends MeasuredPerformance {
 	public MultiClassificationPerformance(MultiClassificationPerformance m) {
 		super(m);
 		this.type = m.type;
-		this.classNames = new String[m.classNames.length];
-		for (int i = 0; i < this.classNames.length; i++) {
-			this.classNames[i] = m.classNames[i];
-			this.classNameMap.put(this.classNames[i], i);
+		if (m.classNames != null) {
+			this.classNames = Arrays.copyOf(m.classNames, m.classNames.length);
+			this.classNameMap.putAll(m.classNameMap);
 		}
-		this.counter = new double[m.counter.length][m.counter.length];
-		for (int i = 0; i < this.counter.length; i++) {
-			for (int j = 0; j < this.counter[i].length; j++) {
-				this.counter[i][j] = m.counter[i][j];
+		if (m.counter != null) {
+			this.counter = new double[m.counter.length][];
+			for (int i = 0; i < m.counter.length; i++) {
+				this.counter[i] = Arrays.copyOf(m.counter[i], m.counter[i].length);
 			}
 		}
-		this.labelAttribute = (Attribute) m.labelAttribute.clone();
-		this.predictedLabelAttribute = (Attribute) m.predictedLabelAttribute.clone();
+		if (m.labelAttribute != null) {
+			this.labelAttribute = (Attribute) m.labelAttribute.clone();
+		}
+		if (m.predictedLabelAttribute != null) {
+			this.predictedLabelAttribute = (Attribute) m.predictedLabelAttribute.clone();
+		}
 		if (m.weightAttribute != null) {
 			this.weightAttribute = (Attribute) m.weightAttribute.clone();
 		}
@@ -145,18 +148,15 @@ public class MultiClassificationPerformance extends MeasuredPerformance {
 	/** Initializes the criterion and sets the label. */
 	@Override
 	public void startCounting(ExampleSet eSet, boolean useExampleWeights) throws OperatorException {
-		super.startCounting(eSet, useExampleWeights);
+		com.rapidminer.example.Tools.hasNominalLabels(eSet, "calculation of classification performance criteria");
 		this.labelAttribute = eSet.getAttributes().getLabel();
-		if (!this.labelAttribute.isNominal()) {
-			throw new UserError(null, 101, "calculation of classification performance criteria",
-					this.labelAttribute.getName());
-		}
 		this.predictedLabelAttribute = eSet.getAttributes().getPredictedLabel();
-
 		if (this.predictedLabelAttribute == null || !this.predictedLabelAttribute.isNominal()) {
-			throw new UserError(null, 101, "calculation of classification performance criteria", "predicted label attribute");
+			throw new UserError(null, 101, "calculation of classification performance criteria",
+					predictedLabelAttribute.getName());
 		}
 
+		super.startCounting(eSet, useExampleWeights);
 		if (useExampleWeights) {
 			this.weightAttribute = eSet.getAttributes().getWeight();
 		}

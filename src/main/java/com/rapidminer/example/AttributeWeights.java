@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,13 +18,6 @@
 */
 package com.rapidminer.example;
 
-import com.rapidminer.RapidMiner;
-import com.rapidminer.datatable.DataTable;
-import com.rapidminer.datatable.SimpleDataTable;
-import com.rapidminer.datatable.SimpleDataTableRow;
-import com.rapidminer.tools.Tools;
-import com.rapidminer.tools.math.AverageVector;
-
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -40,14 +33,20 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
+
+import com.rapidminer.RapidMiner;
+import com.rapidminer.datatable.DataTable;
+import com.rapidminer.datatable.SimpleDataTable;
+import com.rapidminer.datatable.SimpleDataTableRow;
+import com.rapidminer.io.process.XMLTools;
+import com.rapidminer.operator.IOObject;
+import com.rapidminer.tools.Tools;
+import com.rapidminer.tools.math.AverageVector;
 
 
 /**
@@ -275,21 +274,13 @@ public class AttributeWeights extends AverageVector {
 	}
 
 	public void writeAttributeWeights(File file, Charset encoding) throws IOException {
-		PrintWriter out = null;
-		try {
-			out = new PrintWriter(new FileWriter(file));
+		try (FileWriter fw = new FileWriter(file); PrintWriter out = new PrintWriter(fw)) {
 			out.println("<?xml version=\"1.0\" encoding=\"" + encoding + "\"?>");
 			out.println("<attributeweights version=\"" + RapidMiner.getShortVersion() + "\">");
 			for (Entry<String, AttributeWeight> entry : weightMap.entrySet()) {
 				out.println("    <weight name=\"" + entry.getKey() + "\" value=\"" + entry.getValue().getWeight() + "\"/>");
 			}
 			out.println("</attributeweights>");
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			if (out != null) {
-				out.close();
-			}
 		}
 	}
 
@@ -298,10 +289,8 @@ public class AttributeWeights extends AverageVector {
 		AttributeWeights result = new AttributeWeights();
 		Document document = null;
 		try {
-			document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file);
+			document = XMLTools.createDocumentBuilder().parse(file);
 		} catch (SAXException e1) {
-			throw new IOException(e1.getMessage());
-		} catch (ParserConfigurationException e1) {
 			throw new IOException(e1.getMessage());
 		}
 
@@ -353,6 +342,12 @@ public class AttributeWeights extends AverageVector {
 	 */
 	@Override
 	public Object clone() {
+		return copy();
+	}
+
+	/** @since 9.7 */
+	@Override
+	public IOObject copy() {
 		return new AttributeWeights(this);
 	}
 
@@ -372,6 +367,26 @@ public class AttributeWeights extends AverageVector {
 			double newWeight = 1.0d;
 			if (diff != 0.0d) {
 				newWeight = (Math.abs(attributeWeight.getWeight()) - weightMin) / diff;
+			}
+			attributeWeight.setWeight(newWeight);
+		}
+	}
+
+	/**
+	 * This method divides each weight by the sum of weights.
+	 * 
+	 * @since 8.0
+	 */
+	public void relativize() {
+		double sum = 0;
+		for (String name : getAttributeNames()) {
+			double weight = Math.abs(getWeight(name));
+			sum += weight;
+		}
+		for (AttributeWeight attributeWeight : weightMap.values()) {
+			double newWeight = attributeWeight.getWeight();
+			if (sum != 0.0d) {
+				newWeight = Math.abs(newWeight) / sum;
 			}
 			attributeWeight.setWeight(newWeight);
 		}

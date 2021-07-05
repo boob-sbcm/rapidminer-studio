@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.properties;
 
 import java.awt.Color;
@@ -36,7 +36,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
@@ -79,6 +78,7 @@ import com.rapidminer.operator.ports.InputPort;
 import com.rapidminer.operator.ports.metadata.ExampleSetMetaData;
 import com.rapidminer.operator.ports.metadata.ModelMetaData;
 import com.rapidminer.parameter.ParameterTypeExpression;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.Observable;
 import com.rapidminer.tools.Observer;
@@ -104,6 +104,17 @@ import com.rapidminer.tools.expression.MacroResolver;
 public class ExpressionPropertyDialog extends PropertyDialog {
 
 	private static final long serialVersionUID = 5567661137372752202L;
+
+	/**
+	 * The maximum number of characters allowed in the syntax error message (without the TRUNCATED_SYMBOL to mark the
+	 * truncated parts).
+	 */
+	private static final int MAX_ERROR_MESSAGE_LENGTH = 124;
+
+	/**
+	 * This string will be used to mark places in the syntax error message that have been truncated.
+	 */
+	private static final String TRUNCATED_SYMBOL = "[...]";
 
 	/**
 	 * An input panel owns an {@link Observer}, which is updated about model changes.
@@ -155,8 +166,8 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 					if (!predefined) {
 						if (parser.getExpressionContext().getFunction("macro") != null
 								|| parser.getExpressionContext().getFunction("eval") != null) {
-							MacroSelectionDialog macroSelectionDialog = new MacroSelectionDialog(arg, parser
-									.getExpressionContext().getFunction("macro") != null);
+							MacroSelectionDialog macroSelectionDialog = new MacroSelectionDialog(arg,
+									parser.getExpressionContext().getFunction("macro") != null);
 							macroSelectionDialog.setLocation(arg.getLocationOnScreen().x, arg.getLocationOnScreen().y + 40);
 							macroSelectionDialog.setVisible(true);
 							addToExpression(macroSelectionDialog.getExpression());
@@ -301,7 +312,7 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 		private static final long serialVersionUID = 3236281211064051583L;
 
 		@Override
-		public void actionPerformed(final ActionEvent e) {
+		public void loggedActionPerformed(final ActionEvent e) {
 			inputsFilterField.clearFilter();
 			inputsModel.setFilterNameString("");
 			inputsFilterField.requestFocusInWindow();
@@ -342,7 +353,7 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 		private static final long serialVersionUID = 3236281211064051583L;
 
 		@Override
-		public void actionPerformed(final ActionEvent e) {
+		public void loggedActionPerformed(final ActionEvent e) {
 			functionsFilterField.clearFilter();
 			functionModel.setFilterNameString("");
 			functionsFilterField.requestFocusInWindow();
@@ -506,8 +517,8 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 
 		// use a compatibility level to only show functions that are available
 		if (type.getInputPort() != null) {
-			builder = builder.withCompatibility(type.getInputPort().getPorts().getOwner().getOperator()
-					.getCompatibilityLevel());
+			builder = builder
+					.withCompatibility(type.getInputPort().getPorts().getOwner().getOperator().getCompatibilityLevel());
 		}
 		if (controllingProcess != null) {
 			builder = builder.withProcess(controllingProcess);
@@ -675,8 +686,8 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 		scrollPaneExpression.setPreferredSize(new Dimension(getPreferredSize().width, HEIGHT_EXPRESSION_SCROLL_PANE));
 		scrollPaneExpression.setMaximumSize(new Dimension(getMaximumSize().width, HEIGHT_EXPRESSION_SCROLL_PANE));
 		scrollPaneExpression.setBorder(BorderFactory.createMatteBorder(1, 1, 1, 0, COLOR_BORDER_EXPRESSION));
-		scrollPaneExpression.getVerticalScrollBar().setBorder(
-				BorderFactory.createMatteBorder(0, 0, 0, 1, Colors.TEXTFIELD_BORDER));
+		scrollPaneExpression.getVerticalScrollBar()
+				.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Colors.TEXTFIELD_BORDER));
 
 		// use the gutter to display an error icon in the line with an error
 		Gutter gutter = scrollPaneExpression.getGutter();
@@ -733,8 +744,8 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 		functionsC.gridy = 0;
 		functionsC.gridx = 0;
 		functionsC.anchor = GridBagConstraints.NORTHWEST;
-		functionPanel
-				.add(new JLabel("<html><b><font size=" + FONT_SIZE_HEADER + ">Functions</font></b></html>"), functionsC);
+		functionPanel.add(new JLabel("<html><b><font size=" + FONT_SIZE_HEADER + ">Functions</font></b></html>"),
+				functionsC);
 
 		functionsC.insets = new Insets(0, 0, STD_INSET_GBC, STD_INSET_GBC);
 		functionsC.gridx += 1;
@@ -858,7 +869,7 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent arg0) {
+				public void loggedActionPerformed(ActionEvent arg0) {
 					inputsModel.setNominalFilter(chbNominal.isSelected());
 				}
 			});
@@ -870,7 +881,7 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent arg0) {
+				public void loggedActionPerformed(ActionEvent arg0) {
 					inputsModel.setNumericFilter(chbNumeric.isSelected());
 				}
 			});
@@ -882,7 +893,7 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent arg0) {
+				public void loggedActionPerformed(ActionEvent arg0) {
 					inputsModel.setDateTimeFilter(chbDateTime.isSelected());
 				}
 			});
@@ -1141,9 +1152,8 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 				if (!perfectMatch && searchStringGiven) {
 					// check for function name equality without brackets and with brackets
 					String functionName = function.getDisplayName().split("\\(")[0];
-					if (filterName.toLowerCase(Locale.ENGLISH).equals(functionName.toLowerCase(Locale.ENGLISH))
-							|| filterName.toLowerCase(Locale.ENGLISH).equals(
-									function.getDisplayName().toLowerCase(Locale.ENGLISH))) {
+					if (filterName.toLowerCase(Locale.ENGLISH).equals(functionName.toLowerCase(Locale.ENGLISH)) || filterName
+							.toLowerCase(Locale.ENGLISH).equals(function.getDisplayName().toLowerCase(Locale.ENGLISH))) {
 						perfectMatch = true;
 					}
 				}
@@ -1285,8 +1295,8 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 				// open the attributes categories
 				if (filteredModel.get(ExampleResolver.KEY_ATTRIBUTES) != null
 						&& filteredModel.get(ExampleResolver.KEY_SPECIAL_ATTRIBUTES) != null
-						&& filteredModel.get(ExampleResolver.KEY_ATTRIBUTES).size()
-								+ filteredModel.get(ExampleResolver.KEY_SPECIAL_ATTRIBUTES).size() <= MAX_NMBR_INPUTS_SHOWN) {
+						&& filteredModel.get(ExampleResolver.KEY_ATTRIBUTES).size() + filteredModel
+								.get(ExampleResolver.KEY_SPECIAL_ATTRIBUTES).size() <= MAX_NMBR_INPUTS_SHOWN) {
 
 					inputCategoryTaskPanes.get(ExampleResolver.KEY_ATTRIBUTES).setCollapsed(false);
 					inputCategoryTaskPanes.get(ExampleResolver.KEY_SPECIAL_ATTRIBUTES).setCollapsed(false);
@@ -1415,34 +1425,88 @@ public class ExpressionPropertyDialog extends PropertyDialog {
 		validationLabel.setText("<html>" + title + explanation + "</html>");
 		// show the error message with the place of the error in monospaced
 		// DO NOT CHANGE THIS, AS THE INDENTATION IS WRONG OTHERWISE
-		validationTextArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+		validationTextArea.setFont(FontTools.getFont(Font.MONOSPACED, Font.PLAIN, 12));
 
-		// set the error message
-		// strip the error message if necessary
 		if (splittedMessage.length > 1) {
-			int buffer = 50;
-			int stepsize = 5;
-			int stringWidth = SwingTools.getStringWidth(validationTextArea, splittedMessage[1]) + buffer;
-			boolean cut = false;
-			while (stringWidth > validationTextArea.getSize().width - stepsize) {
-				cut = true;
-				splittedMessage[1] = splittedMessage[1].substring(stepsize, splittedMessage[1].length());
-				if (splittedMessage.length > 2) {
-					splittedMessage[2] = splittedMessage[2].substring(stepsize, splittedMessage[2].length());
-				}
-				stringWidth = SwingTools.getStringWidth(validationTextArea, splittedMessage[1]) + buffer;
-			}
-			if (cut) {
-				splittedMessage[1] = "[...]" + splittedMessage[1];
-				if (splittedMessage.length > 2) {
-					splittedMessage[2] = "     " + splittedMessage[2];
-				}
-			}
+			// truncate error message to maxMessageLength where necessary to avoid overflow in the validationTextArea
+			truncateMessage(splittedMessage, MAX_ERROR_MESSAGE_LENGTH);
 		}
+		// set the error message
 		String errorMessage = splittedMessage.length > 1 ? splittedMessage[1] : "\n";
 		if (splittedMessage.length > 2) {
 			errorMessage += "\n" + splittedMessage[2];
 		}
 		validationTextArea.setText(errorMessage);
+	}
+
+	/**
+	 * Helper method that truncates the given error message if it is longer than maxChar characters. It does not return
+	 * a new string array but modifies the given one instead. In this case the
+	 * error message will contain as much of the error as possible plus a symmetrical window around it. Parts of the
+	 * original message that have been truncated are marked by the TRUNCATED_SYMBOL constant string.
+	 *
+	 * @param splittedMessage
+	 * 		the original error message
+	 * @param maxChars
+	 * 		the maximum number of characters the error message is allowed to have
+	 */
+	static void truncateMessage(String[] splittedMessage, int maxChars) {
+		if (splittedMessage.length > 2) {
+			// that means the error has been marked. we dont want to cut the error away
+			if (maxChars < splittedMessage[1].length()) {
+				// every character of the error is marked by a '^' in splittedMessage[2]
+				int errorStart = splittedMessage[2].indexOf('^');
+				int errorEnd = splittedMessage[2].lastIndexOf('^');
+				int errorLength = errorEnd - errorStart + 1;
+				int originalMsgLength = splittedMessage[1].length();
+				if (errorLength > maxChars) {
+					// the end of the error has to be cut because there is no space for the whole error
+					splittedMessage[1] = splittedMessage[1].substring(errorStart, errorStart + maxChars);
+					splittedMessage[2] = splittedMessage[2].substring(errorStart, errorStart + maxChars);
+					addTruncatedSymbols(splittedMessage, errorStart, errorEnd, originalMsgLength);
+				} else {
+					// we can preserve the whole error. we will print the error and a symmetrical window around it
+					int rest = maxChars - errorLength;
+					int windowStart = errorStart - (rest / 2);
+					int windowEnd = errorEnd + (rest / 2);
+					// now we need to make sure that the window is inside the strings bounds
+					if (windowStart < 0) {
+						// pushes the window into the strings bounds from the left side
+						windowEnd -= windowStart;
+						windowStart = 0;
+					}
+					if (windowEnd >= originalMsgLength) {
+						// pushes the window into the strings bounds from the right side
+						windowStart -= windowEnd - originalMsgLength + 1;
+						windowEnd = originalMsgLength - 1;
+					}
+					// applies the windows to the error message
+					splittedMessage[1] = splittedMessage[1].substring(windowStart, windowEnd + 1);
+					splittedMessage[2] = splittedMessage[2].substring(windowStart, Math.min(windowEnd + 1,
+							splittedMessage[2].length()));
+					// adds the TRUNCATED_SYMBOL where necessary
+					addTruncatedSymbols(splittedMessage, windowStart, windowEnd, originalMsgLength);
+				}
+			}
+
+		} else {
+			// that means the error has not been marked. therefore we simply cut the end if necessary
+			if (maxChars < splittedMessage[1].length()) {
+				splittedMessage[1] = splittedMessage[1].substring(0, maxChars) + TRUNCATED_SYMBOL;
+			}
+		}
+	}
+
+	/**
+	 * Helper method that adds the TRUNCATED_SYMBOL constant string to the error message where needed
+	 */
+	private static void addTruncatedSymbols(String[] splittedMessage, int windowStart, int windowEnd, int originalMsgLength) {
+		if (windowStart > 0) {
+			splittedMessage[1] = TRUNCATED_SYMBOL + splittedMessage[1];
+			splittedMessage[2] = "     " + splittedMessage[2];
+		}
+		if (windowEnd < (originalMsgLength - 1)) {
+			splittedMessage[1] = splittedMessage[1] + TRUNCATED_SYMBOL;
+		}
 	}
 }

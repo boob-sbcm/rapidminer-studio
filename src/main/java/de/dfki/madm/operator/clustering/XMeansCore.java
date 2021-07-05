@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -26,7 +26,6 @@ import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.Tools;
 import com.rapidminer.example.set.SplittedExampleSet;
-import com.rapidminer.example.table.AttributeFactory;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
@@ -40,7 +39,8 @@ import com.rapidminer.operator.clustering.ClusterModel;
 import com.rapidminer.operator.clustering.clusterer.FastKMeans;
 import com.rapidminer.operator.clustering.clusterer.KMeans;
 import com.rapidminer.operator.clustering.clusterer.RMAbstractClusterer;
-import com.rapidminer.tools.Ontology;
+import com.rapidminer.operator.clustering.clusterer.XMeans;
+import com.rapidminer.tools.RandomGenerator;
 import com.rapidminer.tools.math.similarity.DistanceMeasure;
 
 import de.dfki.madm.operator.KMeanspp;
@@ -133,24 +133,35 @@ public class XMeansCore extends RMAbstractClusterer {
 
 		CentroidClusterModel bestModel = null;
 
-		RMAbstractClusterer KMean = null;
+		RMAbstractClusterer kmean = null;
 
 		// get the Clustering Algorithm
 		if (this.ClusteringAlgorithm.equals("FastKMeans")) {
-			KMean = new FastKMeans(description);
-			((FastKMeans) KMean).setPresetMeasure(measure);
+			kmean = new FastKMeans(description);
+			((FastKMeans) kmean).setPresetMeasure(measure);
 		} else if (this.ClusteringAlgorithm.equals("KMeans")) {
-			KMean = new KMeans(description);
-			((KMeans) KMean).setPresetMeasure(measure);
+			kmean = new KMeans(description);
+			((KMeans) kmean).setPresetMeasure(measure);
 		} else {
 			throw new OperatorException("Unknown kmeans algorithm: " + ClusteringAlgorithm);
 		}
 
 		// Set Parameters for Clustering Algorithm
-		KMean.setParameter("k", k_min + "");
-		KMean.setParameter("max_runs", maxRuns + "");
-		KMean.setParameter("max_optimization_steps", maxOptimizationSteps + "");
-		KMean.setParameter(KMeanspp.PARAMETER_USE_KPP, kpp + "");
+		kmean.setParameter("k", k_min + "");
+		kmean.setParameter("max_runs", maxRuns + "");
+		kmean.setParameter("max_optimization_steps", maxOptimizationSteps + "");
+		kmean.setParameter(KMeanspp.PARAMETER_USE_KPP, kpp + "");
+		if (executingOperator != null
+				&& executingOperator.getParameterAsBoolean(RandomGenerator.PARAMETER_USE_LOCAL_RANDOM_SEED)) {
+			kmean.setParameter(RandomGenerator.PARAMETER_USE_LOCAL_RANDOM_SEED, Boolean.toString(true));
+			kmean.setParameter(RandomGenerator.PARAMETER_LOCAL_RANDOM_SEED,
+					executingOperator.getParameter(RandomGenerator.PARAMETER_LOCAL_RANDOM_SEED));
+		}
+
+		if (this.getCompatibilityLevel().isAbove(XMeans.VERSION_9_0_0_LABEL_ROLE_BUG)) {
+			kmean.setParameter(RMAbstractClusterer.PARAMETER_ADD_CLUSTER_ATTRIBUTE, "false");
+		}
+		kmean.setCompatibilityLevel(getCompatibilityLevel());
 
 		// initialize progress
 		OperatorProgress operatorProgress = null;
@@ -160,7 +171,7 @@ public class XMeansCore extends RMAbstractClusterer {
 		}
 
 		// get the first run
-		bestModel = (CentroidClusterModel) KMean.generateClusterModel(exampleSet);
+		bestModel = (CentroidClusterModel) kmean.generateClusterModel(exampleSet);
 		if (operatorProgress != null) {
 			operatorProgress.setCompleted(INTERMEDIATE_PROGRESS);
 		}
@@ -173,7 +184,7 @@ public class XMeansCore extends RMAbstractClusterer {
 
 		boolean change = true;
 
-		boolean addAsLabel = getParameterAsBoolean(RMAbstractClusterer.PARAMETER_ADD_AS_LABEL);
+		boolean addAsLabel = addsLabelAttribute();
 		boolean removeUnlabeled = getParameterAsBoolean(RMAbstractClusterer.PARAMETER_REMOVE_UNLABELED);
 
 		while (bestModel.getCentroids().size() < k_max && change) {
@@ -195,10 +206,10 @@ public class XMeansCore extends RMAbstractClusterer {
 			Cluster cl : bestModel.getClusters()) {
 				splittedSet.selectSingleSubset(anz);
 
-				KMean.setParameter("k", 2 + "");
-				Children[anz] = (CentroidClusterModel) KMean.generateClusterModel(splittedSet);
-				KMean.setParameter("k", 1 + "");
-				Parent[anz] = (CentroidClusterModel) KMean.generateClusterModel(splittedSet);
+				kmean.setParameter("k", 2 + "");
+				Children[anz] = (CentroidClusterModel) kmean.generateClusterModel(splittedSet);
+				kmean.setParameter("k", 1 + "");
+				Parent[anz] = (CentroidClusterModel) kmean.generateClusterModel(splittedSet);
 				anz++;
 			}
 
@@ -306,15 +317,15 @@ public class XMeansCore extends RMAbstractClusterer {
 			}
 		}
 
+		if (getCompatibilityLevel().isAbove(XMeans.VERSION_9_0_0_LABEL_ROLE_BUG) && getCompatibilityLevel().isAtMost(XMeans.VERSION_9_1_0_POINTS_COUNTED_TWICE_BUG)) {
+			bestModel = assinePoints(bestModel);
+		}
+
 		if (addsClusterAttribute()) {
-			Attribute cluster = AttributeFactory.createAttribute("cluster", Ontology.NOMINAL);
-			exampleSet.getExampleTable().addAttribute(cluster);
-			exampleSet.getAttributes().setCluster(cluster);
-			int i = 0;
-			for (Example example : exampleSet) {
-				example.setValue(cluster, "cluster_" + centroidAssignments[i]);
-				i++;
+			if (getCompatibilityLevel().isAbove(XMeans.VERSION_9_1_0_POINTS_COUNTED_TWICE_BUG)) {
+				centroidAssignments = bestModel.getClusterAssignments(exampleSet);
 			}
+			addClusterAssignments(exampleSet, centroidAssignments);
 		}
 
 		if (operatorProgress != null) {
@@ -424,7 +435,7 @@ public class XMeansCore extends RMAbstractClusterer {
 	}
 
 	@Override
-	public ClusterModel generateClusterModel(ExampleSet exampleSet) throws OperatorException {
+	protected ClusterModel generateInternalClusterModel(ExampleSet exampleSet) throws OperatorException {
 		return null;
 	}
 
@@ -437,4 +448,5 @@ public class XMeansCore extends RMAbstractClusterer {
 	public void setExecutingOperator(Operator executingOperator) {
 		this.executingOperator = executingOperator;
 	}
+
 }

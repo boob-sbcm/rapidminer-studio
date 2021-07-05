@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.plotter;
 
 import java.awt.Component;
@@ -24,15 +24,10 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.logging.Level;
-
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
@@ -44,10 +39,6 @@ import javax.swing.JScrollPane;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
 
 import com.rapidminer.datatable.DataTable;
 import com.rapidminer.gui.look.Colors;
@@ -65,6 +56,7 @@ import com.rapidminer.gui.tools.ExtendedJScrollPane;
 import com.rapidminer.gui.tools.ExtendedListModel;
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.parameter.ParameterTypeEnumeration;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 
@@ -77,8 +69,9 @@ import com.rapidminer.tools.LogService;
  *
  * @see PlotterPanel
  * @author Simon Fischer, Michael Knopf
- *
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class PlotterControlPanel extends JPanel implements PlotterChangedListener {
 
 	private static final long serialVersionUID = 1L;
@@ -90,11 +83,10 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 
 	private List<PlotterSettingsChangedListener> changeListenerElements = new LinkedList<>();
 
-	private transient final ItemListener plotterComboListener = new ItemListener() {
-
-		@Override
-		public void itemStateChanged(ItemEvent e) {
-			plotterSettings.setPlotter(plotterCombo.getSelectedItem().toString());
+	private final transient ItemListener plotterComboListener = e -> {
+		Object selectedItem = plotterCombo.getSelectedItem();
+		if (selectedItem != null) {
+			plotterSettings.setPlotter(selectedItem.toString());
 		}
 	};
 
@@ -125,13 +117,7 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 
 		final JLabel coordinatesLabel = new JLabel("                      ");
 		PlotterMouseHandler mouseHandler = new PlotterMouseHandler(plotter, plotterSettings.getDataTable(),
-				new CoordinatesHandler() {
-
-					@Override
-					public void updateCoordinates(String coordinateInfo) {
-						coordinatesLabel.setText(coordinateInfo);
-					}
-				});
+				coordinatesLabel::setText);
 		plotter.addMouseMotionListener(mouseHandler);
 		plotter.addMouseListener(mouseHandler);
 
@@ -142,8 +128,8 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			label = new JLabel(I18N.getGUILabel("plotter_panel.selection.label") + ":");
 			this.add(label, c);
 
-			ImageIcon buttonIcon = SwingTools.createImage("icons/chartPreview/32/"
-					+ plotter.getPlotterName().replace(' ', '_') + ".png");
+			ImageIcon buttonIcon = SwingTools
+					.createImage("icons/chartPreview/32/" + plotter.getPlotterName().replace(' ', '_') + ".png");
 
 			plotterCombo.setIcon(buttonIcon);
 			plotterCombo.setIconTextGap(6);
@@ -173,7 +159,7 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			label.setToolTipText(toolTip);
 			this.add(label, c);
 			final int finalAxisIndex = axisIndex;
-			final ListeningJComboBox<String> axisCombo = new ListeningJComboBox<String>(PlotterAdapter.PARAMETER_SUFFIX_AXIS
+			final ListeningJComboBox<String> axisCombo = new ListeningJComboBox<>(PlotterAdapter.PARAMETER_SUFFIX_AXIS
 					+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex)), 200);
 			axisCombo.setToolTipText(toolTip);
 			axisCombo.setPreferredSize(
@@ -185,15 +171,12 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			}
 			changeListenerElements.add(axisCombo);
 
-			axisCombo.addItemListener(new ItemListener() {
-
-				@Override
-				public void itemStateChanged(ItemEvent e) {
-					String value = PlotterAdapter.PARAMETER_SUFFIX_AXIS
-							+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex));
-					String key = axisCombo.getSelectedItem().toString();
-
-					plotterSettings.setParameterAsString(value, key);
+			axisCombo.addItemListener(e -> {
+				String value = PlotterAdapter.PARAMETER_SUFFIX_AXIS
+						+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex));
+				Object selectedItem = axisCombo.getSelectedItem();
+				if (selectedItem != null) {
+					plotterSettings.setParameterAsString(value, selectedItem.toString());
 				}
 			});
 
@@ -205,21 +188,15 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 
 			// log scale
 			if (plotter.isSupportingLogScale(axisIndex)) {
-				final ListeningJCheckBox logScaleBox = new ListeningJCheckBox(PlotterAdapter.PARAMETER_SUFFIX_AXIS
-						+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex))
-						+ PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE, I18N.getMessage(I18N.getGUIBundle(),
-						"gui.label.plotter_panel.log_scale.label"), false);
+				final ListeningJCheckBox logScaleBox = new ListeningJCheckBox(
+						PlotterAdapter.PARAMETER_SUFFIX_AXIS
+								+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex))
+								+ PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE,
+						I18N.getMessage(I18N.getGUIBundle(), "gui.label.plotter_panel.log_scale.label"), false);
 				changeListenerElements.add(logScaleBox);
-				logScaleBox.addActionListener(new ActionListener() {
-
-					@Override
-					public void actionPerformed(ActionEvent e) {
-						plotterSettings.setParameterAsBoolean(
-								PlotterAdapter.PARAMETER_SUFFIX_AXIS
-										+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex))
-										+ PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE, logScaleBox.isSelected());
-					}
-				});
+				logScaleBox.addActionListener(e -> plotterSettings.setParameterAsBoolean(PlotterAdapter.PARAMETER_SUFFIX_AXIS
+						+ PlotterAdapter.transformParameterName(plotter.getAxisName(finalAxisIndex))
+						+ PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE, logScaleBox.isSelected()));
 				this.add(logScaleBox, c);
 				this.add(createFiller(10), c);
 			}
@@ -256,22 +233,19 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 
 				plotList.setCellRenderer(new LineStyleCellRenderer<>(plotter));
 
-				plotList.addListSelectionListener(new ListSelectionListener() {
-
-					@Override
-					public void valueChanged(ListSelectionEvent e) {
-						if (!e.getValueIsAdjusting()) {
-							List<String> list = new LinkedList<>();
-							for (int i = 0; i < plotList.getModel().getSize(); i++) {
-								if (plotList.isSelectedIndex(i)) {
-									list.add(model.get(i).toString());
-								}
-							}
-							String result = ParameterTypeEnumeration.transformEnumeration2String(list);
-
-							plotterSettings.setParameterAsString(PlotterAdapter.PARAMETER_PLOT_COLUMNS, result);
+				plotList.addListSelectionListener(e -> {
+					if (e.getValueIsAdjusting()) {
+						return;
+					}
+					List<String> list = new LinkedList<>();
+					for (int i = 0; i < plotList.getModel().getSize(); i++) {
+						if (plotList.isSelectedIndex(i)) {
+							list.add(model.get(i));
 						}
 					}
+					String result = ParameterTypeEnumeration.transformEnumeration2String(list);
+
+					plotterSettings.setParameterAsString(PlotterAdapter.PARAMETER_PLOT_COLUMNS, result);
 				});
 				plotList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 				JScrollPane listScrollPane = new ExtendedJScrollPane(plotList);
@@ -296,12 +270,10 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 				for (int j = 0; j < dataTable.getNumberOfColumns(); j++) {
 					plotCombo.addItem(dataTable.getColumnName(j));
 				}
-				plotCombo.addItemListener(new ItemListener() {
-
-					@Override
-					public void itemStateChanged(ItemEvent e) {
-						plotterSettings.setParameterAsString(PlotterAdapter.PARAMETER_PLOT_COLUMN, plotCombo
-								.getSelectedItem().toString());
+				plotCombo.addItemListener(e -> {
+					Object selectedItem = plotCombo.getSelectedItem();
+					if (selectedItem != null) {
+						plotterSettings.setParameterAsString(PlotterAdapter.PARAMETER_PLOT_COLUMN, selectedItem.toString());
 					}
 				});
 
@@ -316,18 +288,13 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 
 		// log scale
 		if (plotter.isSupportingLogScaleForPlotColumns()) {
-			final ListeningJCheckBox logScaleBox = new ListeningJCheckBox(PlotterAdapter.PARAMETER_PLOT_COLUMNS
-					+ PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE, I18N.getMessage(I18N.getGUIBundle(),
-					"gui.label.plotter_panel.log_scale.label"), false);
+			final ListeningJCheckBox logScaleBox = new ListeningJCheckBox(
+					PlotterAdapter.PARAMETER_PLOT_COLUMNS + PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE,
+					I18N.getMessage(I18N.getGUIBundle(), "gui.label.plotter_panel.log_scale.label"), false);
 			changeListenerElements.add(logScaleBox);
-			logScaleBox.addActionListener(new ActionListener() {
-
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					plotterSettings.setParameterAsBoolean(PlotterAdapter.PARAMETER_PLOT_COLUMNS
-							+ PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE, logScaleBox.isSelected());
-				}
-			});
+			logScaleBox.addActionListener(e -> plotterSettings.setParameterAsBoolean(
+					PlotterAdapter.PARAMETER_PLOT_COLUMNS + PlotterAdapter.PARAMETER_SUFFIX_LOG_SCALE,
+					logScaleBox.isSelected()));
 			this.add(logScaleBox, c);
 			this.add(createFiller(10), c);
 		}
@@ -337,13 +304,7 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			final ListeningJCheckBox sortingBox = new ListeningJCheckBox(PlotterAdapter.PARAMETER_SUFFIX_SORTING,
 					I18N.getMessage(I18N.getGUIBundle(), "gui.label.plotter_panel.sorting.label"), false);
 			changeListenerElements.add(sortingBox);
-			sortingBox.addActionListener(new ActionListener() {
-
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					plotterSettings.setParameterAsBoolean(PlotterAdapter.PARAMETER_SUFFIX_SORTING, sortingBox.isSelected());
-				}
-			});
+			sortingBox.addActionListener(e -> plotterSettings.setParameterAsBoolean(PlotterAdapter.PARAMETER_SUFFIX_SORTING, sortingBox.isSelected()));
 			this.add(sortingBox, c);
 			this.add(createFiller(10), c);
 		}
@@ -353,22 +314,16 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			final ListeningJCheckBox absoluteBox = new ListeningJCheckBox(PlotterAdapter.PARAMETER_SUFFIX_ABSOLUTE_VALUES,
 					I18N.getMessage(I18N.getGUIBundle(), "gui.label.plotter_panel.abs_values.label"), false);
 			changeListenerElements.add(absoluteBox);
-			absoluteBox.addActionListener(new ActionListener() {
-
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					plotterSettings.setParameterAsBoolean(PlotterAdapter.PARAMETER_SUFFIX_ABSOLUTE_VALUES,
-							absoluteBox.isSelected());
-				}
-			});
+			absoluteBox.addActionListener(e -> plotterSettings.setParameterAsBoolean(
+					PlotterAdapter.PARAMETER_SUFFIX_ABSOLUTE_VALUES, absoluteBox.isSelected()));
 			this.add(absoluteBox, c);
 			this.add(createFiller(10), c);
 		}
 
 		// zooming
 		if (plotter.canHandleZooming()) {
-			label = new JLabel(I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.set_zooming_factor.label")
-					+ ":");
+			label = new JLabel(
+					I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.set_zooming_factor.label") + ":");
 			toolTip = I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.set_zooming_factor.tip");
 			label.setToolTipText(toolTip);
 			this.add(label, c);
@@ -378,19 +333,14 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			zoomingSlider.setToolTipText(toolTip);
 			this.add(zoomingSlider, c);
 			this.add(createFiller(10), c);
-			zoomingSlider.addChangeListener(new ChangeListener() {
-
-				@Override
-				public void stateChanged(ChangeEvent e) {
-					plotterSettings.setParameterAsInt(PlotterAdapter.PARAMETER_SUFFIX_ZOOM_FACTOR, zoomingSlider.getValue());
-				}
-			});
+			zoomingSlider.addChangeListener(e -> plotterSettings.setParameterAsInt(
+					PlotterAdapter.PARAMETER_SUFFIX_ZOOM_FACTOR, zoomingSlider.getValue()));
 		}
 
 		// jitter
 		if (plotter.canHandleJitter()) {
-			label = new JLabel(I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.set_jittering_amount.label")
-					+ ":");
+			label = new JLabel(
+					I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.set_jittering_amount.label") + ":");
 			toolTip = I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.set_jittering_amount.tip");
 			label.setToolTipText(toolTip);
 			this.add(label, c);
@@ -401,30 +351,19 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			jitterSlider.setMajorTickSpacing(10);
 			this.add(jitterSlider, c);
 			this.add(createFiller(10), c);
-			jitterSlider.addChangeListener(new ChangeListener() {
-
-				@Override
-				public void stateChanged(ChangeEvent e) {
-					plotterSettings.setParameterAsInt(PlotterAdapter.PARAMETER_JITTER_AMOUNT, jitterSlider.getValue());
-				}
-			});
+			jitterSlider.addChangeListener(e -> plotterSettings.setParameterAsInt(
+					PlotterAdapter.PARAMETER_JITTER_AMOUNT, jitterSlider.getValue()));
 		}
 
 		// option dialog
 		if (plotter.hasOptionsDialog()) {
 			toolTip = I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.open_options_dialog.tip");
-			JButton optionsButton = new JButton(I18N.getMessage(I18N.getGUIBundle(),
-					"gui.action.plotter_panel.open_options_dialog.label"));
+			JButton optionsButton = new JButton(
+					I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.open_options_dialog.label"));
 			optionsButton.setToolTipText(toolTip);
 			this.add(optionsButton, c);
 			this.add(createFiller(10), c);
-			optionsButton.addActionListener(new ActionListener() {
-
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					plotter.showOptionsDialog();
-				}
-			});
+			optionsButton.addActionListener(e -> plotter.showOptionsDialog());
 		}
 
 		// Add the plotter options components for user interaction, if provided
@@ -445,7 +384,7 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 			toolTip = I18N.getMessage(I18N.getGUIBundle(), "gui.label.plotter_panel.coordinates.label");
 			coordinatesLabel.setToolTipText(toolTip);
 			coordinatesLabel.setBorder(BorderFactory.createEtchedBorder());
-			coordinatesLabel.setFont(new Font("Monospaced", Font.PLAIN, coordinatesLabel.getFont().getSize()));
+			coordinatesLabel.setFont(FontTools.getFont(Font.MONOSPACED, Font.PLAIN, coordinatesLabel.getFont().getSize()));
 			this.add(coordinatesLabel, c);
 		}
 
@@ -466,22 +405,16 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 	public void updatePlotterCombo() {
 		plotterCombo.removeItemListener(plotterComboListener);
 		plotterCombo.removeAllItems();
-		Iterator<String> n = plotterSettings.getAvailablePlotters().keySet().iterator();
-		while (n.hasNext()) {
-			String plotterName = n.next();
+		plotterSettings.getAvailablePlotters().forEach((plotterName, plotterClass) -> {
 			try {
-				Class<? extends Plotter> plotterClass = plotterSettings.getAvailablePlotters().get(plotterName);
 				if (plotterClass != null) {
 					plotterCombo.addItem(plotterName);
 				}
-			} catch (IllegalArgumentException e) {
-				LogService.getRoot().log(Level.WARNING,
-						"com.rapidminer.gui.plotter.PlotterControlPanel.instatiating_plotter_error", plotterName);
-			} catch (SecurityException e) {
+			} catch (IllegalArgumentException | SecurityException e) {
 				LogService.getRoot().log(Level.WARNING,
 						"com.rapidminer.gui.plotter.PlotterControlPanel.instatiating_plotter_error", plotterName);
 			}
-		}
+		});
 		plotterCombo.setToolTipText(I18N.getMessage(I18N.getGUIBundle(), "gui.action.plotter_panel.select_chart.tip"));
 		plotterCombo.addItemListener(plotterComboListener);
 	}
@@ -506,7 +439,7 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 	 * @return the filler label
 	 */
 	private static JLabel createFiller(final int height) {
-		JLabel label = new JLabel() {
+		return new JLabel() {
 
 			private static final long serialVersionUID = 1L;
 
@@ -515,7 +448,6 @@ public class PlotterControlPanel extends JPanel implements PlotterChangedListene
 				return new Dimension(super.getPreferredSize().width, height);
 			}
 		};
-		return label;
 	}
 
 }

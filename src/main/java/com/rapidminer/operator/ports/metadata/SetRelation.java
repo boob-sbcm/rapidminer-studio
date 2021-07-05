@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -17,6 +17,9 @@
  * If not, see http://www.gnu.org/licenses/.
 */
 package com.rapidminer.operator.ports.metadata;
+
+import java.util.Arrays;
+
 
 /**
  * Can be used to indicate whether we know the attribute set exactly, or only know that it is a
@@ -64,5 +67,15 @@ public enum SetRelation {
 	@Override
 	public String toString() {
 		return description;
+	}
+
+	/**
+	 * Returns the {@link SetRelation} with the given description, or {@link SetRelation#UNKNOWN} if the description
+	 * does not match any value.
+	 *
+	 * @since 9.7.0
+	 */
+	public static SetRelation fromDescription(String description) {
+		return Arrays.stream(SetRelation.values()).filter(r -> r.toString().equals(description)).findFirst().orElse(UNKNOWN);
 	}
 }

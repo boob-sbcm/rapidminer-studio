@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,9 +18,12 @@
 */
 package com.rapidminer.test.asserter;
 
+import static org.junit.Assert.fail;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -28,12 +31,21 @@ import java.util.List;
 import org.junit.Assert;
 import org.junit.ComparisonFailure;
 
+import com.rapidminer.adaption.belt.IOTable;
+import com.rapidminer.adaption.belt.TableViewingTools;
+import com.rapidminer.belt.table.BeltConverter;
+import com.rapidminer.belt.table.Table;
+import com.rapidminer.belt.util.ColumnRole;
+import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.table.SparseDataRow;
 import com.rapidminer.operator.IOObject;
 import com.rapidminer.operator.IOObjectCollection;
 import com.rapidminer.operator.OperatorException;
+import com.rapidminer.operator.clustering.Centroid;
+import com.rapidminer.operator.clustering.CentroidClusterModel;
+import com.rapidminer.operator.clustering.Cluster;
 import com.rapidminer.operator.learner.associations.FrequentItemSet;
 import com.rapidminer.operator.learner.associations.FrequentItemSets;
 import com.rapidminer.operator.learner.functions.LinearRegressionModel;
@@ -150,18 +162,18 @@ public class AsserterFactoryRapidMiner implements AsserterFactory {
 				Averagable actual = (Averagable) actualObj;
 
 				assertDouble(message + " (average is not equal)", expected.getAverage(), actual.getAverage());
-				assertDouble(message + " (makro average is not equal)", expected.getMakroAverage(), actual.getMakroAverage());
-				assertDouble(message + " (mikro average is not equal)", expected.getMikroAverage(), actual.getMikroAverage());
+				assertDouble(message + " (macro average is not equal)", expected.getMakroAverage(), actual.getMakroAverage());
+				assertDouble(message + " (micro average is not equal)", expected.getMikroAverage(), actual.getMikroAverage());
 				assertDouble(message + " (average count is not equal)", expected.getAverageCount(), actual.getAverageCount());
-				assertDouble(message + " (makro standard deviation is not equal)", expected.getMakroStandardDeviation(),
+				assertDouble(message + " (macro standard deviation is not equal)", expected.getMakroStandardDeviation(),
 						actual.getMakroStandardDeviation());
-				assertDouble(message + " (mikro standard deviation is not equal)", expected.getMikroStandardDeviation(),
+				assertDouble(message + " (micro standard deviation is not equal)", expected.getMikroStandardDeviation(),
 						actual.getMikroStandardDeviation());
 				assertDouble(message + " (standard deviation is not equal)", expected.getStandardDeviation(),
 						actual.getStandardDeviation());
-				assertDouble(message + " (makro variance is not equal)", expected.getMakroVariance(),
+				assertDouble(message + " (macro variance is not equal)", expected.getMakroVariance(),
 						actual.getMakroVariance());
-				assertDouble(message + " (mikro variance is not equal)", expected.getMikroVariance(),
+				assertDouble(message + " (micro variance is not equal)", expected.getMikroVariance(),
 						actual.getMikroVariance());
 				assertDouble(message + " (variance is not equal)", expected.getVariance(), actual.getVariance());
 
@@ -224,14 +236,30 @@ public class AsserterFactoryRapidMiner implements AsserterFactory {
 			 */
 			@Override
 			public void assertEquals(String message, Object expectedObj, Object actualObj) {
-				ExampleSet expected = (ExampleSet) expectedObj;
-				ExampleSet actual = (ExampleSet) actualObj;
+
+				ExampleSet expected = null;
+				ExampleSet actual = null;
+				try {
+					expected = expectedObj instanceof IOTable ?
+							TableViewingTools.getView((IOTable) expectedObj) : (ExampleSet) expectedObj;
+					actual = actualObj instanceof IOTable ? TableViewingTools.getView((IOTable) actualObj) :
+							(ExampleSet) actualObj;
+				} catch (BeltConverter.ConversionException e) {
+					fail("Advanced column " + e.getColumnName() + " of type " + e.getType() + " not " +
+							"comparable");
+				}
 
 				message = message + " - ExampleSets are not equal";
 
 				boolean compareAttributeDefaultValues = true;
-				if (expected.getExampleTable().size() > 0) {
-					compareAttributeDefaultValues = expected.getExampleTable().getDataRow(0) instanceof SparseDataRow;
+				try {
+					if (expected.getExampleTable().size() > 0) {
+						compareAttributeDefaultValues =
+								expected.getExampleTable().getDataRow(0) instanceof SparseDataRow;
+					}
+				} catch (RuntimeException e) {
+					//Do not compare default values if table is not accessible
+					compareAttributeDefaultValues = false;
 				}
 
 				// compare attributes
@@ -255,6 +283,72 @@ public class AsserterFactoryRapidMiner implements AsserterFactory {
 			@Override
 			public Class<?> getAssertable() {
 				return ExampleSet.class;
+			}
+		});
+
+		// Asserter for IOTable
+		asserters.add(new Asserter() {
+
+			/**
+			 * Tests two tables by iterating over all rows. Ignores the order of special columns analogously to
+			 * {@link RapidAssert#assertEquals(String, Attribute, Attribute, boolean)}.
+			 *
+			 * @param message
+			 * 		message to display if an error occurs
+			 * @param expectedObj
+			 * 		expected value
+			 * @param actualObj
+			 * 		actual value
+			 */
+			@Override
+			public void assertEquals(String message, Object expectedObj, Object actualObj) {
+
+				IOTable expected = (IOTable) expectedObj;
+				IOTable actual = (IOTable) actualObj;
+
+				Table expectedTable = expected.getTable();
+				Table actualTable = actual.getTable();
+
+				message = message + " - Tables are not equal";
+
+				// compare number of rows
+				Assert.assertEquals(message + " (number of rows)", expectedTable.height(), actualTable.height());
+
+				// compare columns
+				Assert.assertEquals(message + " (number of columns)", expectedTable.width(), actualTable.width());
+
+				List<String> regularExpected = expectedTable.select().withoutMetaData(ColumnRole.class).labels();
+				List<String> regularActual = actualTable.select().withoutMetaData(ColumnRole.class).labels();
+
+				Assert.assertEquals(message + " (number of special columns)",
+						(expectedTable.width() - regularExpected.size()),
+						(actualTable.width() - regularActual.size()));
+
+				//regular columns must be in the same order
+				for (int i = 0; i < regularExpected.size(); i++) {
+					String expectedLabel = regularExpected.get(i);
+					String actualLabel = regularActual.get(i);
+					Assert.assertEquals(message + " (column name)", expectedLabel, actualLabel);
+					RapidAssert.assertEquals(message, expectedLabel, expectedTable.column(expectedLabel),
+							actualTable.column(actualLabel));
+				}
+
+				List<String> specialExpected = expectedTable.select().withMetaData(ColumnRole.class).labels();
+				for (String expectedLabel : specialExpected) {
+					if (!actualTable.contains(expectedLabel)) {
+						Assert.assertEquals(message + " (column name)", expectedLabel, null);
+					}
+					Assert.assertEquals(message + " (column role)", expectedTable.getFirstMetaData(expectedLabel,
+							ColumnRole.class).toString(), actualTable.getFirstMetaData(expectedLabel, ColumnRole.class).toString());
+
+					RapidAssert.assertEquals(message, expectedLabel, expectedTable.column(expectedLabel),
+							actualTable.column(expectedLabel));
+				}
+			}
+
+			@Override
+			public Class<?> getAssertable() {
+				return IOTable.class;
 			}
 		});
 
@@ -671,6 +765,75 @@ public class AsserterFactoryRapidMiner implements AsserterFactory {
 				Assert.assertEquals(message + " : sum squares residuals values are not equal",
 						expected.getSumSquaresResiduals(), actual.getSumSquaresResiduals(), 1E-15);
 
+			}
+
+		});
+
+		// Asserter for Centroid Cluster Model
+		asserters.add(new Asserter() {
+
+			@Override
+			public Class<?> getAssertable() {
+				return CentroidClusterModel.class;
+			}
+
+			/**
+			 * Tests two Centroid Cluster Model
+			 *
+			 * @param message
+			 *            message to display if an error occurs
+			 * @param expectedObj
+			 *            expected value
+			 * @param actualObj
+			 *            actual value
+			 */
+			@Override
+			public void assertEquals(String message, Object expectedObj, Object actualObj) {
+				CentroidClusterModel expected = (CentroidClusterModel) expectedObj;
+				CentroidClusterModel actual = (CentroidClusterModel) actualObj;
+
+				message = message + " - Centroid Cluster Model  \"" + actual.getSource()
+						+ "\" does not match the expected result";
+
+
+				// compare training header (basic information)
+				Assert.assertEquals(message + " : training headers are not equal", expected.getTrainingHeader().toString(), actual.getTrainingHeader().toString());
+
+				// compare distance measure type
+				Assert.assertEquals(message + " : distance measure types are not equal", expected.getDistanceMeasure().getClass(), actual.getDistanceMeasure().getClass());
+
+				// compare attribute names
+				Assert.assertArrayEquals(message + " : attribute names are not equal", expected.getAttributeNames(), actual.getAttributeNames());
+
+				// compare number of clusters
+				Assert.assertEquals(message + " : number of clusters are not equal", expected.getNumberOfClusters(), actual.getNumberOfClusters());
+
+				// compare centroids
+				Assert.assertArrayEquals(message + " : centroids are not equal", expected.getCentroids().stream().map(Centroid::getCentroid).toArray(), actual.getCentroids().stream().map(Centroid::getCentroid).toArray());
+
+				// compare number of examples
+				Assert.assertArrayEquals(message + " : clusters number of examples are not equal", expected.getClusters().stream().mapToInt(Cluster::getNumberOfExamples).toArray(), actual.getClusters().stream().mapToInt(Cluster::getNumberOfExamples).toArray());
+
+		        // compare cluster ids
+				Assert.assertArrayEquals(message + " : clusters ids are not equal", expected.getClusters().stream().mapToInt(Cluster::getClusterId).toArray(), actual.getClusters().stream().mapToInt(Cluster::getClusterId).toArray());
+
+				// compare cluster example ids
+				Assert.assertArrayEquals(message + " : clusters example ids are not equal", expected.getClusters().stream().map(Cluster::getExampleIds).flatMap(Collection::stream).toArray(Object[]::new), actual.getClusters().stream().map(Cluster::getExampleIds).flatMap(Collection::stream).toArray(Object[]::new));
+
+				// compare is adding label
+				Assert.assertEquals(message + " : is adding label is not equal", expected.isAddingLabel(), actual.isAddingLabel());
+
+				// compare is in target encoding
+				Assert.assertEquals(message + " : is in target encoding is not equal", expected.isInTargetEncoding(), actual.isInTargetEncoding());
+
+				// compare is removing
+				Assert.assertEquals(message + " : is removing unknown assignments is not equal", expected.isRemovingUnknownAssignments(), actual.isRemovingUnknownAssignments());
+
+				// compare is updatable
+				Assert.assertEquals(message + " : is updatable is not equal", expected.isUpdatable(), actual.isUpdatable());
+
+				// check string representation
+				Assert.assertEquals(message + " : string representations are not equal", expected.toString(), actual.toString());
 			}
 
 		});

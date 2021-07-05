@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -467,10 +467,9 @@ class AutoMlpThreaded extends Thread {
 
 	void CrossValidate(ExampleSet splittedES) {
 		for (int i = 0; i < nensembles; i++) {
-			int maxSize = splittedES.size();
 			double error = 0.0;
-			for (int index = 0; index < maxSize; index++) {
-				error += model[i].calculateError(splittedES.getExample(index));
+			for (Example example : splittedES) {
+				error += model[i].calculateError(example);
 			}
 			// ::::TODO::::.. this is not the right way.. to setup the error value..
 			// it is done here because have to test it first.

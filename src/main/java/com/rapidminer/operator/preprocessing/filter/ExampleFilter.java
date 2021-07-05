@@ -1,26 +1,28 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.operator.preprocessing.filter;
 
+import java.util.Arrays;
 import java.util.List;
 
 import com.rapidminer.example.AttributeTypeException;
+import com.rapidminer.example.Attributes;
 import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.set.Condition;
@@ -31,6 +33,8 @@ import com.rapidminer.example.set.ExpressionFilter;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
 import com.rapidminer.operator.OperatorVersion;
+import com.rapidminer.operator.ProcessSetupError;
+import com.rapidminer.operator.SimpleProcessSetupError;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.annotation.ResourceConsumptionEstimator;
 import com.rapidminer.operator.ports.OutputPort;
@@ -130,6 +134,8 @@ public class ExampleFilter extends AbstractDataProcessing {
 	/** The hidden parameter for &quot;Check meta data for comparators.&quot; */
 	public static final String PARAMETER_FILTERS_CHECK_METADATA = "filters_check_metadata";
 
+	public static final OperatorVersion BEFORE_ATT_NAME_RESOLUTION = new OperatorVersion(9, 5, 1);
+
 	private final OutputPort unmatchedOutput = getOutputPorts().createPort("unmatched example set");
 
 	public ExampleFilter(final OperatorDescription description) {
@@ -151,10 +157,28 @@ public class ExampleFilter extends AbstractDataProcessing {
 	public ExampleSetMetaData modifyMetaData(final ExampleSetMetaData emd) {
 		emd.getNumberOfExamples().reduceByUnknownAmount();
 		try {
-			if (getParameterAsString(PARAMETER_CONDITION_CLASS).equals(
-					ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_NO_MISSING_ATTRIBUTES])) {
+			final String className = getParameterAsString(PARAMETER_CONDITION_CLASS);
+			if (className.equals(ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_NO_MISSING_ATTRIBUTES])) {
 				for (AttributeMetaData amd : emd.getAllAttributes()) {
 					amd.setNumberOfMissingValues(new MDInteger(0));
+				}
+			} else if (className.equals(ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_WRONG_PREDICTIONS])
+					|| className.equals(ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_CORRECT_PREDICTIONS])) {
+				final AttributeMetaData labelMetaData = emd.getLabelMetaData();
+				boolean hasPredictionRole = false;
+				for (AttributeMetaData attrMD : emd.getAllAttributes()) {
+					if (Attributes.PREDICTION_NAME.equals(attrMD.getRole())) {
+						hasPredictionRole = true;
+						break;
+					}
+				}
+				// only one error will be visible so check if both known possible errors are found first
+				if (labelMetaData == null && !hasPredictionRole) {
+					addError(new SimpleProcessSetupError(ProcessSetupError.Severity.WARNING, this.getPortOwner(), "conditions.missing_label_and_predictions"));
+				} else if (labelMetaData == null) {
+					addError(new SimpleProcessSetupError(ProcessSetupError.Severity.WARNING, this.getPortOwner(), "conditions.missing_label"));
+				} else if (!hasPredictionRole) {
+					addError(new SimpleProcessSetupError(ProcessSetupError.Severity.WARNING, this.getPortOwner(), "conditions.missing_prediction"));
 				}
 			}
 		} catch (UndefinedParameterError e) {
@@ -180,10 +204,11 @@ public class ExampleFilter extends AbstractDataProcessing {
 					throw new UndefinedParameterError(PARAMETER_FILTER, this);
 				}
 				List<String[]> operatorFilterList = ParameterTypeList.transformString2List(rawParameterString);
-				condition = new CustomFilter(inputSet, operatorFilterList,
-						getParameterAsBoolean(PARAMETER_FILTERS_LOGIC_AND), getProcess().getMacroHandler());
-			} else if (className
-					.equals(ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_EXPRESSION])) {
+				CustomFilter customFilter = new CustomFilter(inputSet, operatorFilterList,
+						getParameterAsBoolean(PARAMETER_FILTERS_LOGIC_AND), getProcess().getMacroHandler(),
+						getCompatibilityLevel().isAbove(BEFORE_ATT_NAME_RESOLUTION));
+				condition = customFilter;
+			} else if (className.equals(ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_EXPRESSION])) {
 				// special handling for expression, has different
 				String expression = getParameterAsString(PARAMETER_PARAMETER_EXPRESSION);
 				if (expression == null || expression.isEmpty()) {
@@ -229,6 +254,7 @@ public class ExampleFilter extends AbstractDataProcessing {
 		type.registerDependencyCondition(new EqualStringCondition(this, PARAMETER_CONDITION_CLASS, false,
 				ConditionedExampleSet.KNOWN_CONDITION_NAMES[ConditionedExampleSet.CONDITION_CUSTOM_FILTER]));
 		type.setExpert(false);
+		type.setPrimary(true);
 		types.add(type);
 
 		type = new ParameterTypeString(PARAMETER_PARAMETER_STRING,
@@ -261,7 +287,7 @@ public class ExampleFilter extends AbstractDataProcessing {
 		// above
 		type = new ParameterTypeList(PARAMETER_FILTERS_LIST, "The list of filters.", new ParameterTypeString(
 				"PARAMETER_FILTERS_ENTRY_KEY", "A key entry of the filters list."), new ParameterTypeString(
-						"PARAMETER_FILTERS_ENTRY_VALUE", "A value entry of the filters list."), false);
+				"PARAMETER_FILTERS_ENTRY_VALUE", "A value entry of the filters list."), false);
 		type.setHidden(true);
 		type.registerDependencyCondition(new EqualStringCondition(this, PARAMETER_CONDITION_CLASS, true,
 				ConditionedExampleSet.KNOWN_CONDITION_NAMES[8]));
@@ -298,7 +324,11 @@ public class ExampleFilter extends AbstractDataProcessing {
 
 	@Override
 	public OperatorVersion[] getIncompatibleVersionChanges() {
-		return ExpressionParserUtils.addIncompatibleExpressionParserChange(super.getIncompatibleVersionChanges());
+		OperatorVersion[] incompatibleVersions = ExpressionParserUtils.addIncompatibleExpressionParserChange(super.getIncompatibleVersionChanges());
+		OperatorVersion[] extendedIncompatibleVersions = Arrays.copyOf(incompatibleVersions,
+				incompatibleVersions.length + 1);
+		extendedIncompatibleVersions[incompatibleVersions.length] = BEFORE_ATT_NAME_RESOLUTION;
+		return extendedIncompatibleVersions;
 	}
 
 }

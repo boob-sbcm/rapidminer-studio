@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -29,8 +29,9 @@ import java.util.List;
 
 /**
  * @author Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public abstract class AbstractDimensionConfig implements DimensionConfig {
 
 	private final PlotDimension dimension;

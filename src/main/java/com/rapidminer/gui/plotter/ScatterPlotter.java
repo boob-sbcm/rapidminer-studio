@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -59,7 +59,9 @@ import com.rapidminer.tools.math.MathFunctions;
  * dimension.
  * 
  * @author Ingo Mierswa, Simon Fischer
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class ScatterPlotter extends PlotterAdapter {
 
 	private static final long serialVersionUID = -6640810053422867017L;
@@ -201,16 +203,10 @@ public class ScatterPlotter extends PlotterAdapter {
 		JFileChooser chooser = SwingTools.createFileChooser("file_chooser.save", null, false, new FileFilter[0]);
 		if (chooser.showSaveDialog(ScatterPlotter.this) == JFileChooser.APPROVE_OPTION) {
 			File file = chooser.getSelectedFile();
-			PrintWriter out = null;
-			try {
-				out = new PrintWriter(new FileWriter(file));
+			try (FileWriter fw = new FileWriter(file); PrintWriter out = new PrintWriter(fw)) {
 				dataTable.write(out);
 			} catch (Exception ex) {
 				SwingTools.showSimpleErrorMessage("cannot_write_to_file_0", ex, file);
-			} finally {
-				if (out != null) {
-					out.close();
-				}
 			}
 		}
 	}

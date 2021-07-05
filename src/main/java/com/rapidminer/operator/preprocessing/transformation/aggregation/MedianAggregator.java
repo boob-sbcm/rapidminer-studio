@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -38,7 +38,7 @@ public class MedianAggregator extends NumericalAggregator {
 	 * This class implements an array of primitive doubles and provides getter, adder and size
 	 * methods. It is used by the {@link MedianAggregator} as a lightweight data structure.
 	 */
-	private static class VariableDoubleArray {
+	public static class VariableDoubleArray {
 
 		private static final int INITIAL_ARRAY_SIZE = 64;
 
@@ -64,6 +64,15 @@ public class MedianAggregator extends NumericalAggregator {
 			}
 			data[size] = value;
 			size++;
+		}
+
+		public void addAll(VariableDoubleArray other) {
+			if (data.length < size + other.size) {
+				int newSize = size + other.size;
+				data = Arrays.copyOf(data, newSize);
+			}
+			System.arraycopy(other.data, 0, data, size, other.size);
+			size +=other.size;
 		}
 	}
 
@@ -126,7 +135,7 @@ public class MedianAggregator extends NumericalAggregator {
 	 *            The nth value will be selected
 	 * @return The nth value
 	 */
-	private double quickNth(VariableDoubleArray values, double n) {
+	public static double quickNth(VariableDoubleArray values, double n) {
 		// Choose pivot from the middle of the list
 		double pivot = values.getArray()[values.size() / 2];
 
@@ -150,7 +159,7 @@ public class MedianAggregator extends NumericalAggregator {
 		// Median between two different lists -> Median is midpoint of greatest value of smaller
 		// list and smallest value of greater list
 		if (smallerValues.size() == n) {
-			double max = Double.MIN_VALUE;
+			double max = Double.NEGATIVE_INFINITY;
 			for (int i = 0; i < smallerValues.size(); i++) {
 				if (smallerValues.getArray()[i] > max) {
 					max = smallerValues.getArray()[i];
@@ -158,7 +167,7 @@ public class MedianAggregator extends NumericalAggregator {
 			}
 			return (pivot + max) / 2;
 		} else if (smallerValues.size() + equalCount == n) {
-			double min = Double.MAX_VALUE;
+			double min = Double.POSITIVE_INFINITY;
 			for (int i = 0; i < greaterValues.size(); i++) {
 				if (greaterValues.getArray()[i] < min) {
 					min = greaterValues.getArray()[i];
@@ -218,7 +227,7 @@ public class MedianAggregator extends NumericalAggregator {
 		// Median between two different lists -> Median is midpoint of greatest value of smaller
 		// list and smallest value of greater list
 		if (smallerWeightCount == n) {
-			double max = Double.MIN_VALUE;
+			double max = Double.NEGATIVE_INFINITY;
 			for (int i = 0; i < smallerValues.size(); i++) {
 				if (smallerValues.getArray()[i] > max) {
 					max = smallerValues.getArray()[i];
@@ -226,7 +235,7 @@ public class MedianAggregator extends NumericalAggregator {
 			}
 			return (pivot + max) / 2;
 		} else if (smallerWeightCount + equalWeightCount == n) {
-			double min = Double.MAX_VALUE;
+			double min = Double.POSITIVE_INFINITY;
 			for (int i = 0; i < greaterValues.size(); i++) {
 				if (greaterValues.getArray()[i] < min) {
 					min = greaterValues.getArray()[i];

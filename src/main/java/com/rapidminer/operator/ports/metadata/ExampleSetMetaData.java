@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,14 +24,20 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.rapidminer.RapidMiner;
+import com.rapidminer.adaption.belt.IOTable;
+import com.rapidminer.adaption.belt.TableViewingTools;
+import com.rapidminer.belt.table.BeltConverter;
+import com.rapidminer.belt.table.Table;
 import com.rapidminer.example.AttributeRole;
 import com.rapidminer.example.Attributes;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.tools.Ontology;
 import com.rapidminer.tools.ParameterService;
 import com.rapidminer.tools.Tools;
+import com.rapidminer.tools.belt.BeltTools;
 
 
 /**
@@ -58,12 +64,25 @@ public class ExampleSetMetaData extends MetaData {
 		super(ExampleSet.class);
 	}
 
+	/**
+	 * @param keyValueMap ignored
+	 * @deprecated since 9.7, never used, confusing and unnecessary, will be removed in the near future. Use {@link
+	 * #ExampleSetMetaData()} instead and call {@link MetaData#addAdditionalData(String, Object)} if needed.
+	 */
+	@Deprecated
 	public ExampleSetMetaData(Map<String, Object> keyValueMap) {
-		super(ExampleSet.class, keyValueMap);
+		super(ExampleSet.class);
 	}
 
+	/**
+	 * @param key   ignored
+	 * @param value ignored
+	 * @deprecated since 9.7, never used, confusing and unnecessary, will be removed in the near future. Use {@link
+	 * #ExampleSetMetaData()} instead and call {@link MetaData#addAdditionalData(String, Object)} if needed.
+	 */
+	@Deprecated
 	public ExampleSetMetaData(String key, Object value) {
-		super(ExampleSet.class, key, value);
+		super(ExampleSet.class);
 	}
 
 	public ExampleSetMetaData(List<AttributeMetaData> attributeMetaData) {
@@ -117,6 +136,22 @@ public class ExampleSetMetaData extends MetaData {
 	 */
 	public ExampleSetMetaData(ExampleSet exampleSet, boolean shortened, boolean recalculateStatistics) {
 		super(ExampleSet.class);
+		create(exampleSet, shortened, recalculateStatistics);
+	}
+
+	/**
+	 * Adds {@link AttributeMetaData} according to the given {@link ExampleSet}.
+	 *
+	 * @param exampleSet
+	 * 		the ExampleSet object the meta-data should be constructed for
+	 * @param shortened
+	 * 		whether the meta data should be shortened. In case it should be shortened the meta-data will contain at
+	 * 		most
+	 *        {@link #getMaximumNumberOfAttributes()} attributes
+	 * @param recalculateStatistics
+	 * 		defines whether the ExampleSet statistics should be recalculated
+	 */
+	private void create(ExampleSet exampleSet, boolean shortened, boolean recalculateStatistics) {
 		int maxNumber = Integer.MAX_VALUE;
 		if (shortened) {
 			maxNumber = getMaximumNumberOfAttributes();
@@ -137,7 +172,58 @@ public class ExampleSetMetaData extends MetaData {
 				break;
 			}
 		}
+		if (getAllAttributes().size() < exampleSet.getAttributes().allSize()) {
+			mergeSetRelation(SetRelation.SUPERSET);
+		}
+
 		numberOfExamples = new MDInteger(exampleSet.size());
+	}
+
+	public ExampleSetMetaData(IOTable tableObject, boolean shortened) {
+		super(ExampleSet.class);
+		try {
+			create(TableViewingTools.getView(tableObject), shortened, !shortened);
+		} catch (BeltConverter.ConversionException e) {
+			//clear meta data in case some were added before the exception
+			attributeMetaData.clear();
+			handleWithAdvanced(tableObject, shortened);
+		}
+	}
+
+	/**
+	 * In case the tableObject contains advanced columns, creates meta data for the table without advanced columns and
+	 * then adds the advanced columns with {@link Ontology#ATTRIBUTE_VALUE}.
+	 *
+	 * @param tableObject
+	 * 		the table object for which to create meta data
+	 * @param shortened
+	 * 		whether the meta data should be shortened. In case it should be shortened the meta-data will contain at
+	 * 		most {@link #getMaximumNumberOfAttributes()} attributes
+	 */
+	private void handleWithAdvanced(IOTable tableObject, boolean shortened) {
+		Table table = tableObject.getTable();
+		Table tableWithoutAdvanced = table.columns(table.labels().stream()
+				.filter(l -> !BeltTools.isAdvanced(table.column(l).type())).collect(Collectors.toList()));
+		ExampleSet view = TableViewingTools.getView(new IOTable(tableWithoutAdvanced));
+		create(view, shortened, !shortened);
+		int maxNumber = Integer.MAX_VALUE;
+		if (shortened) {
+			maxNumber = getMaximumNumberOfAttributes();
+		}
+		maxNumber -= attributeMetaData.size();
+		if (maxNumber > 0) {
+			for (int i = 0; i < table.width(); i++) {
+				if (BeltTools.isAdvanced(table.column(i).type())) {
+					String advanced = table.label(i);
+					String role = BeltConverter.convertRole(table, advanced);
+					addAttribute(new AttributeMetaData(advanced, Ontology.ATTRIBUTE_VALUE, role));
+					maxNumber--;
+					if (maxNumber == 0) {
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	public AttributeMetaData getAttributeByName(String name) {
@@ -173,11 +259,18 @@ public class ExampleSetMetaData extends MetaData {
 		attributeMetaData.remove(attribute.getName());
 	}
 
+	/**
+	 * Adds the given attribute to the meta data and adds the meta data as the owner of the attribute. Shrinks the
+	 * nominal values to {@link RapidMiner#PROPERTY_RAPIDMINER_GENERAL_MAX_NOMINAL_VALUES}.
+	 *
+	 * @param attribute
+	 * 		the attribute meta data to add
+	 */
 	public void addAttribute(AttributeMetaData attribute) {
 		if (attributeMetaData == null) {
-			attributeMetaData = new LinkedHashMap<String, AttributeMetaData>();
+			attributeMetaData = new LinkedHashMap<>();
 		}
-		// registering this exampleSetmetaData as owner of the attribute.
+		// registering this exampleSetMetaData as owner of the attribute.
 		attribute = attribute.registerOwner(this);
 		attributeMetaData.put(attribute.getName(), attribute);
 	}
@@ -629,7 +722,7 @@ public class ExampleSetMetaData extends MetaData {
 	}
 
 	public void setNominalDataWasShrinked(boolean b) {
-		nominalDataWasShrinked = true;
+		nominalDataWasShrinked = nominalDataWasShrinked || b;
 	}
 
 	/**

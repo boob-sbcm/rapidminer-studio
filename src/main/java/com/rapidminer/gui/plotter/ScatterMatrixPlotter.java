@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -47,7 +47,9 @@ import com.rapidminer.tools.ParameterService;
  * A scatter plot matrix which uses the {@link ScatterPlotter} for each of the plots.
  *
  * @author Ingo Mierswa
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class ScatterMatrixPlotter extends PlotterAdapter {
 
 	private static final long serialVersionUID = 9049081889010883621L;
@@ -256,17 +258,10 @@ public class ScatterMatrixPlotter extends PlotterAdapter {
 		JFileChooser chooser = SwingTools.createFileChooser("file_chooser.save", null, false, new FileFilter[0]);
 		if (chooser.showSaveDialog(ScatterMatrixPlotter.this) == JFileChooser.APPROVE_OPTION) {
 			File file = chooser.getSelectedFile();
-			PrintWriter out = null;
-			try {
-				out = new PrintWriter(new FileWriter(file));
+			try (FileWriter fw = new FileWriter(file); PrintWriter out = new PrintWriter(fw)) {
 				dataTable.write(out);
-				out.close();
 			} catch (Exception ex) {
 				SwingTools.showSimpleErrorMessage("cannot_write_to_file_0", ex, file);
-			} finally {
-				if (out != null) {
-					out.close();
-				}
 			}
 		}
 	}

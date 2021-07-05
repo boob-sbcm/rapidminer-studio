@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,12 @@
 */
 package com.rapidminer.operator.nio.file;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.List;
+
 import com.rapidminer.operator.Annotations;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorDescription;
@@ -27,7 +33,7 @@ import com.rapidminer.operator.SimpleProcessSetupError;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.ports.OutputPort;
 import com.rapidminer.operator.ports.metadata.GenerateNewMDRule;
-import com.rapidminer.operator.ports.metadata.MDTransformationRule;
+import com.rapidminer.operator.ports.metadata.MetaData;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeCategory;
 import com.rapidminer.parameter.ParameterTypeFile;
@@ -35,21 +41,15 @@ import com.rapidminer.parameter.ParameterTypeRepositoryLocation;
 import com.rapidminer.parameter.ParameterTypeString;
 import com.rapidminer.parameter.UndefinedParameterError;
 import com.rapidminer.parameter.conditions.EqualTypeCondition;
+import com.rapidminer.repository.BinaryEntry;
 import com.rapidminer.repository.BlobEntry;
-import com.rapidminer.repository.Entry;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
+import com.rapidminer.repository.RepositoryTools;
 import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.WebServiceTools;
-
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.util.LinkedList;
-import java.util.List;
 
 
 /**
@@ -69,147 +69,165 @@ public class LoadFileOperator extends Operator {
 
 	public OutputPort fileOutputPort = getOutputPorts().createPort("file");
 
-	private List<File> myTempFiles = new LinkedList<File>();
-
 	public LoadFileOperator(OperatorDescription description) {
 		super(description);
-		getTransformer().addRule(new GenerateNewMDRule(fileOutputPort, FileObject.class));
-		getTransformer().addRule(new MDTransformationRule() {
-
-			@Override
-			public void transformMD() {
-				try {
-					checkMetaData();
-				} catch (UserError e) {
-					addError(new SimpleProcessSetupError(Severity.WARNING, getPortOwner(), "passthrough", e.getMessage()));
+		getTransformer().addRule(
+				new GenerateNewMDRule(fileOutputPort, FileObject.class){
+					@Override
+					public void transformMD() {
+						MetaData clone = getUnmodifiedMetaData();
+						try {
+							clone.setAnnotations(checkMetaDataAndGetAnnotations());
+						} catch (UserError e) {
+							addError(new SimpleProcessSetupError(Severity.WARNING, getPortOwner(), "passthrough", e.getMessage()));
+						}
+						clone.addToHistory(fileOutputPort);
+						fileOutputPort.deliverMD(modifyMetaData(clone));
+					}
 				}
-			}
-		});
+		);
 	}
 
 	/**
 	 * @throws UserError
-	 * 
+	 *
 	 */
 	protected void checkMetaData() throws UserError {
-		String source;
+		checkMetaDataAndGetAnnotations();
+	}
+
+	/**
+	 * Checks the meta data and creates the {@link Annotations#KEY_SOURCE} and {@link Annotations#KEY_FILENAME} if possible
+	 *
+	 * @throws UserError in case the current configuration is not valid
+	 * @return the annotations for the selected entry
+	 * @since 9.6
+	 */
+	private Annotations checkMetaDataAndGetAnnotations() throws UserError {
+		String source = null;
+		String fileName = null;
 		try {
 			switch (getParameterAsInt(PARAMETER_SOURCE_TYPE)) {
 				case SOURCE_TYPE_FILE:
-					File file = getParameterAsFile(PARAMETER_FILENAME);
-
-					// check if file exists and is readable
-					if (!file.exists()) {
-						throw new UserError(this, "301", file);
-					} else if (!file.canRead()) {
-						throw new UserError(this, "302", file, "");
-					}
+					File file = getFile();
+					source = file.getAbsolutePath();
+					fileName =  file.getName();
 					break;
 				case SOURCE_TYPE_URL:
 					// check only if url is valid, not if it's accessible for performance reasons
-					try {
-						// ignore this warning - only create URL to check if the parameter string
-						// represents a valid url syntax
-						new URL(getParameterAsString(PARAMETER_URL));
-					} catch (MalformedURLException e) {
-						throw new UserError(this, e, "313", getParameterAsString(PARAMETER_URL));
-					}
+					source = getURL().toExternalForm();
+					// it's hard to always get a good filename from an url
+					fileName = null;
 					break;
 				case SOURCE_TYPE_REPOSITORY:
-					RepositoryLocation location = getParameterAsRepositoryLocation(PARAMETER_REPOSITORY_LOCATION);
-					source = location.getAbsoluteLocation();
-
 					// check if entry exists
-					Entry entry;
-					try {
-						entry = location.locateEntry();
-					} catch (RepositoryException e) {
-						throw new UserError(this, "319", e, source);
-					}
-					if (entry == null) {
-						throw new UserError(this, "312", source, "entry does not exist");
-					} else if (!(entry instanceof BlobEntry)) {
-						throw new UserError(this, "942", source, "blob", entry.getType());
-					}
+					DataEntry entry = getEntry();
+					source = entry.getLocation().getAbsoluteLocation();
+					fileName = entry.getName();
 					break;
 			}
 		} catch (UndefinedParameterError e) {
 			// handled by parameter checks in super class
 		}
+		Annotations annotations = new Annotations();
+		if (fileName != null) {
+			annotations.setAnnotation(Annotations.KEY_FILENAME, fileName);
+		}
+		if (source != null) {
+			annotations.setAnnotation(Annotations.KEY_SOURCE, source);
+		}
+		return annotations;
 	}
 
 	@Override
 	public void doWork() throws OperatorException {
-		String source;
+		final FileObject result;
 		switch (getParameterAsInt(PARAMETER_SOURCE_TYPE)) {
 			case SOURCE_TYPE_FILE:
-				File file = getParameterAsFile(PARAMETER_FILENAME);
-
-				// check if file exists and is readable
-				if (!file.exists()) {
-					throw new UserError(this, "301", file);
-				} else if (!file.canRead()) {
-					throw new UserError(this, "302", file, "");
-				}
-
-				source = file.getAbsolutePath();
-				SimpleFileObject result = new SimpleFileObject(file);
-				result.getAnnotations().setAnnotation(Annotations.KEY_SOURCE, source);
-				fileOutputPort.deliver(result);
+				result = new SimpleFileObject(getFile());
 				break;
 			case SOURCE_TYPE_URL:
-				URL url;
 				try {
-					url = new URL(getParameterAsString(PARAMETER_URL));
-					source = url.toString();
-					URLConnection connection = url.openConnection();
-					WebServiceTools.setURLConnectionDefaults(connection);
-					ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-					Tools.copyStreamSynchronously(connection.getInputStream(), buffer, true);
-					BufferedFileObject result1 = new BufferedFileObject(buffer.toByteArray());
-					result1.getAnnotations().setAnnotation(Annotations.KEY_SOURCE, source);
-					fileOutputPort.deliver(result1);
-				} catch (MalformedURLException e) {
-					throw new UserError(this, e, "313", getParameterAsString(PARAMETER_URL));
+					byte[] fileBytes = Tools.readInputStream(WebServiceTools.openStreamFromURL(getURL()));
+					result = new BufferedFileObject(fileBytes);
 				} catch (IOException e) {
 					throw new UserError(this, "314", getParameterAsString(PARAMETER_URL));
 				}
 				break;
 			case SOURCE_TYPE_REPOSITORY:
-				RepositoryLocation location = getParameterAsRepositoryLocation(PARAMETER_REPOSITORY_LOCATION);
-
 				// check if entry exists
-				Entry entry;
-				try {
-					entry = location.locateEntry();
-				} catch (RepositoryException e) {
-					throw new UserError(this, "319", e, location.getAbsoluteLocation());
+				DataEntry entry = getEntry();
+				if (entry instanceof BinaryEntry) {
+					RepositoryLocation binLoc = new RepositoryLocationBuilder().withExpectedDataEntryType(BinaryEntry.class).
+							buildFromAbsoluteLocation(entry.getLocation().getAbsoluteLocation());
+					result = new BinaryEntryFileObject(binLoc);
+				} else {
+					RepositoryLocation blobLoc = new RepositoryLocationBuilder().withExpectedDataEntryType(BlobEntry.class).
+							buildFromAbsoluteLocation(entry.getLocation().getAbsoluteLocation());
+					result = new RepositoryBlobObject(blobLoc);
 				}
-				if (entry == null) {
-					throw new UserError(this, "312", location.getAbsoluteLocation(), "entry does not exist");
-				} else if (!(entry instanceof BlobEntry)) {
-					throw new UserError(this, "942", location.getAbsoluteLocation(), "blob", entry.getType());
-				}
-
-				source = location.getAbsoluteLocation();
-				RepositoryBlobObject result2 = new RepositoryBlobObject(location);
-				result2.getAnnotations().setAnnotation(Annotations.KEY_SOURCE, source);
-				fileOutputPort.deliver(result2);
 				break;
 			default:
 				// cannot happen
 				throw new OperatorException("Illegal source type: " + getParameterAsString(PARAMETER_SOURCE_TYPE));
 		}
-
+		result.getAnnotations().addAll(checkMetaDataAndGetAnnotations());
+		fileOutputPort.deliver(result);
 	}
 
-	@Override
-	public void processFinished() throws OperatorException {
-		for (File file : myTempFiles) {
-			file.delete();
+	/**
+	 * @return the selected {@link #PARAMETER_FILENAME}
+	 * @throws UserError if the parameter is not set or invalid
+	 * @since 9.6
+	 */
+	private File getFile() throws UserError{
+		File file = getParameterAsFile(PARAMETER_FILENAME);
+
+		// check if file exists and is readable
+		if (!file.exists()) {
+			throw new UserError(this, "301", file);
+		} else if (!file.canRead()) {
+			throw new UserError(this, "302", file, "");
 		}
-		myTempFiles.clear();
-		super.processFinished();
+		return file;
+	}
+
+	/**
+	 * @return the selected {@link #PARAMETER_URL}
+	 * @throws UserError if the parameter is not set or invalid
+	 * @since 9.6
+	 */
+	private URL getURL() throws UserError{
+		try {
+			// create URL to check if the parameter string represents a valid url syntax
+			return new URL(getParameterAsString(PARAMETER_URL));
+		} catch (MalformedURLException e) {
+			throw new UserError(this, e, "313", getParameterAsString(PARAMETER_URL));
+		}
+	}
+
+	/**
+	 * @return the selected {@link #PARAMETER_REPOSITORY_LOCATION}
+	 * @throws UserError if the parameter is not set or invalid
+	 * @since 9.6
+	 */
+	private DataEntry getEntry() throws UserError{
+		RepositoryLocation location = getParameterAsRepositoryLocationData(PARAMETER_REPOSITORY_LOCATION, DataEntry.class);
+		String absoluteLocation = location.getAbsoluteLocation();
+
+		// check if entry exists
+		DataEntry entry;
+		try {
+			entry = location.locateData();
+		} catch (RepositoryException e) {
+			throw new UserError(this, "319", e, absoluteLocation);
+		}
+		if (entry == null) {
+			throw new UserError(this, "312", absoluteLocation, "entry does not exist");
+		} else if (!(entry instanceof BlobEntry || entry instanceof BinaryEntry)) {
+			throw new UserError(this, "942", absoluteLocation, "blob", entry.getType());
+		}
+		return entry;
 	}
 
 	@Override
@@ -217,11 +235,12 @@ public class LoadFileOperator extends Operator {
 		List<ParameterType> parameterTypes = super.getParameterTypes();
 
 		parameterTypes.add(new ParameterTypeCategory(PARAMETER_SOURCE_TYPE,
-				"Choose wether to open a file, a URL or a repository entry.", SOURCE_TYPES, SOURCE_TYPE_FILE, true));
+				"Choose whether to open a file, a URL or a repository entry.", SOURCE_TYPES, SOURCE_TYPE_FILE, true));
 
 		ParameterTypeFile parameterTypeFile = new ParameterTypeFile(PARAMETER_FILENAME, "File to open", null, true, false);
 		parameterTypeFile.registerDependencyCondition(new EqualTypeCondition(this, PARAMETER_SOURCE_TYPE, SOURCE_TYPES,
 				true, SOURCE_TYPE_FILE));
+		parameterTypeFile.setPrimary(true);
 		parameterTypes.add(parameterTypeFile);
 
 		ParameterTypeString parameterTypeUrl = new ParameterTypeString(PARAMETER_URL, "URL to open", true, false);
@@ -232,6 +251,7 @@ public class LoadFileOperator extends Operator {
 		ParameterTypeRepositoryLocation parameterTypeRepositoryLocation = new ParameterTypeRepositoryLocation(
 				PARAMETER_REPOSITORY_LOCATION, "repository entry to open", true);
 		parameterTypeRepositoryLocation.setExpert(false);
+		parameterTypeRepositoryLocation.setRepositoryFilter(RepositoryTools.ONLY_BLOB_AND_BINARY_ENTRIES);
 		parameterTypeRepositoryLocation.registerDependencyCondition(new EqualTypeCondition(this, PARAMETER_SOURCE_TYPE,
 				SOURCE_TYPES, true, SOURCE_TYPE_REPOSITORY));
 		parameterTypes.add(parameterTypeRepositoryLocation);

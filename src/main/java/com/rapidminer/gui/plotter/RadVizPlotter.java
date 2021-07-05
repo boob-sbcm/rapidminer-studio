@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -63,7 +63,9 @@ import javax.swing.event.ListSelectionListener;
  * represents a non-linear transformation of the data that preserves certain symmetries.
  * 
  * @author Daniel Hakenjos, Ingo Mierswa
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class RadVizPlotter extends PlotterAdapter {
 
 	private static final long serialVersionUID = 199188198448229742L;

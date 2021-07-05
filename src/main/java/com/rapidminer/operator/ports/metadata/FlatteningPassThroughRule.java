@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -49,11 +49,13 @@ public class FlatteningPassThroughRule implements MDTransformationRule {
 				if (metaData instanceof CollectionMetaData) {
 					metaData = ((CollectionMetaData) metaData).getElementMetaDataRecursive();
 				}
+				if (metaData != null) {
 				metaData = metaData.clone();
 				metaData.addToHistory(outputPort);
 				outputPort.deliverMD(modifyMetaData(metaData));
 				return;
 			}
+		}
 		}
 		outputPort.deliverMD(null);
 	}

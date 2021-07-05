@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -42,6 +42,7 @@ import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorException;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.nio.model.xlsx.XlsxResultSet;
+import com.rapidminer.parameter.ParameterTypeDateFormat;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.ProgressListener;
@@ -113,9 +114,11 @@ public class Excel2007ResultSet implements DataResultSet {
 			throw new UserError(callingOperator, "file_consumer.no_file_defined");
 		}
 		try {
-			sheet = workbook.getSheetAt(configuration.getSheet());
+			sheet = configuration.selectSheetFrom(workbook);
 		} catch (IndexOutOfBoundsException | IllegalArgumentException e) {
 			throw new UserError(callingOperator, 953, configuration.getSheet() + 1);
+		} catch (ExcelSheetSelection.SheetNotFoundException e) {
+			throw new UserError(callingOperator, 321, configuration.getFile(), e.getMessage());
 		}
 		Row row = sheet.getRow(sheet.getFirstRowNum());
 		if (row == null) {
@@ -271,9 +274,8 @@ public class Excel2007ResultSet implements DataResultSet {
 	public boolean isMissing(int columnIndex) {
 		Cell cell = getCurrentCell(columnIndex);
 		try {
-			boolean missing = cell == null || cell.getCellType() == Cell.CELL_TYPE_BLANK
+			return cell == null || cell.getCellType() == Cell.CELL_TYPE_BLANK
 					|| cell.getCellType() == Cell.CELL_TYPE_ERROR || "".equals(cell.getStringCellValue().trim());
-			return missing;
 		} catch (IllegalStateException e) {
 			return false;
 		}
@@ -321,18 +323,20 @@ public class Excel2007ResultSet implements DataResultSet {
 			return null;
 		}
 		if (cell.getCellType() == Cell.CELL_TYPE_NUMERIC) {
-			Date dateCellValue = cell.getDateCellValue();
-			return dateCellValue;
+			return cell.getDateCellValue();
 		} else {
 			try {
 				String valueString = cell.getStringCellValue();
 				try {
-					SimpleDateFormat simpleDateFormat = new SimpleDateFormat(dateFormat);
+					SimpleDateFormat simpleDateFormat = ParameterTypeDateFormat.createCheckedDateFormat(dateFormat, null);
 					simpleDateFormat.setTimeZone(TimeZone.getTimeZone(this.timeZone));
 					return simpleDateFormat.parse(valueString);
 				} catch (java.text.ParseException e) {
 					throw new ParseException(new ParsingError(currentRow, columnIndex,
 							ParsingError.ErrorCode.UNPARSEABLE_DATE, valueString));
+				} catch (UserError userError) {
+					throw new ParseException(new ParsingError(currentRow, columnIndex,
+							ParsingError.ErrorCode.UNPARSEABLE_DATE, userError.getMessage()));
 				}
 			} catch (IllegalStateException e) {
 				throw new ParseException(new ParsingError(currentRow, columnIndex, ParsingError.ErrorCode.UNPARSEABLE_DATE,
@@ -348,8 +352,7 @@ public class Excel2007ResultSet implements DataResultSet {
 			return "";
 		}
 		if (cell.getCellType() == Cell.CELL_TYPE_NUMERIC) {
-			String value = String.valueOf(cell.getNumericCellValue());
-			return value;
+			return String.valueOf(cell.getNumericCellValue());
 		} else if (cell.getCellType() == Cell.CELL_TYPE_FORMULA) {
 			String value;
 			if (cell.getCachedFormulaResultType() == Cell.CELL_TYPE_NUMERIC) {
@@ -360,8 +363,7 @@ public class Excel2007ResultSet implements DataResultSet {
 			return value;
 		} else {
 			try {
-				String value = cell.getStringCellValue();
-				return value;
+				return cell.getStringCellValue();
 			} catch (IllegalStateException e) {
 				return "";
 			}

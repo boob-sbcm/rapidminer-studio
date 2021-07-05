@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -213,8 +213,8 @@ public class ProcessRendererTransferHandler extends ReceivingOperatorTransferHan
 							model.setOperatorRect(op, newAnchor);
 							opIndex++;
 						}
-						model.fireOperatorMoved(op);
 					}
+					model.fireOperatorsMoved(newOperators);
 				}
 
 				// index at which the first operator is inserted
@@ -251,6 +251,8 @@ public class ProcessRendererTransferHandler extends ReceivingOperatorTransferHan
 					first = false;
 				}
 				dropInsertionPredecessor = null;
+
+				model.fireOperatorsMoved(newOperators);
 				return true;
 			} else {
 				dropInsertionPredecessor = null;

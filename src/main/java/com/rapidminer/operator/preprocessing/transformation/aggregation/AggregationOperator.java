@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -36,6 +36,7 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 
 import com.rapidminer.example.Attribute;
+import com.rapidminer.example.AttributeRole;
 import com.rapidminer.example.Attributes;
 import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
@@ -240,6 +241,12 @@ public class AggregationOperator extends AbstractDataProcessing {
 	 */
 	static final OperatorVersion VERSION_7_4_0 = new OperatorVersion(7, 4, 0);
 
+	/**
+	 * After version 8.2.0, special grouping attributes keep their role and
+	 * {@link AggregationFunction#FUNCTION_NAME_CONCATENATION} will support {@link #PARAMETER_ONLY_DISTINCT}
+	 */
+	static final OperatorVersion VERSION_8_2_0 = new OperatorVersion(8, 2, 0);
+
 	private final AttributeSubsetSelector attributeSelector = new AttributeSubsetSelector(this, getExampleSetInputPort());
 
 	public AggregationOperator(OperatorDescription desc) {
@@ -262,7 +269,7 @@ public class AggregationOperator extends AbstractDataProcessing {
 					if (amd.isNumerical() && getCompatibilityLevel().isAtMost(VERSION_5_1_6)) {
 						// converting type to mimic NumericalToPolynomial used below
 						amd.setType(Ontology.NOMINAL);
-						amd.setValueSet(Collections.<String> emptySet(), SetRelation.SUPERSET);
+						amd.setValueSet(Collections.<String>emptySet(), SetRelation.SUPERSET);
 					}
 					resultMD.addAttribute(amd);
 				}
@@ -338,6 +345,9 @@ public class AggregationOperator extends AbstractDataProcessing {
 
 	@Override
 	public ExampleSet apply(ExampleSet exampleSet) throws OperatorException {
+		getProgress().setTotal(exampleSet.size());
+		int progressCounter = 0;
+		getProgress().setCompleted(0);
 		// creating data structures for building aggregates
 		List<AggregationFunction> aggregationFunctions = createAggreationFunctions(exampleSet);
 		Attribute[] groupAttributes;
@@ -408,8 +418,6 @@ public class AggregationOperator extends AbstractDataProcessing {
 			// if no grouping, we will directly insert into leaf node
 			leafNode = new LeafAggregationTreeNode(aggregationFunctions);
 		}
-		getProgress().setTotal(exampleSet.size());
-		int progressCounter = 0;
 		for (Example example : exampleSet) {
 			if (groupAttributes.length > 0) {
 				AggregationTreeNode currentNode = rootNode;
@@ -439,7 +447,7 @@ public class AggregationOperator extends AbstractDataProcessing {
 			}
 
 			// Trigger operator progress
-			if (++progressCounter % 100 == 0) {
+			if (++progressCounter % 25 == 0) {
 				getProgress().setCompleted(progressCounter);
 			}
 		}
@@ -460,13 +468,24 @@ public class AggregationOperator extends AbstractDataProcessing {
 
 		// creating example set
 		ExampleSetBuilder builder = ExampleSets.from(newAttributes);
+		// preserve roles of grouping attributes
+		if (getCompatibilityLevel().isAbove(VERSION_8_2_0)) {
+			int attributeArrayIndex = 0;
+			for (Attribute groupAttribute : groupAttributes) {
+				AttributeRole role = exampleSet.getAttributes().getRole(groupAttribute);
+				if (role != null && role.getSpecialName() != null) {
+					builder.withRole(newAttributes[attributeArrayIndex], role.getSpecialName());
+				}
+				attributeArrayIndex++;
+			}
+		}
 		DataRowFactory factory = new DataRowFactory(DataRowFactory.TYPE_DOUBLE_ARRAY, '.');
 		double[] dataOfUpperLevels = new double[groupAttributes.length];
 
 		// prepare empty lists
 		ArrayList<List<Aggregator>> allAggregators = new ArrayList<>();
 		for (int aggregatorIdx = 0; aggregatorIdx < aggregationFunctions.size(); ++aggregatorIdx) {
-			allAggregators.add(new ArrayList<Aggregator>());
+			allAggregators.add(new ArrayList<>());
 		}
 
 		ArrayList<double[]> allGroupCombinations = new ArrayList<>();
@@ -554,12 +573,13 @@ public class AggregationOperator extends AbstractDataProcessing {
 		// for recent version table is correct: Deliver example set
 		ExampleSet resultSet = builder.build();
 		resultSet.getAnnotations().addAll(exampleSet.getAnnotations());
+		resultSet.setAllUserData(exampleSet.getAllUserData());
 		return resultSet;
 	}
 
 	private void parseLeaf(LeafAggregationTreeNode node, double[] dataOfUpperLevels, List<double[]> allGroupCombinations,
-			List<List<Aggregator>> allAggregators, DataRowFactory factory, Attribute[] newAttributes,
-			List<AggregationFunction> aggregationFunctions) {
+						   List<List<Aggregator>> allAggregators, DataRowFactory factory, Attribute[] newAttributes,
+						   List<AggregationFunction> aggregationFunctions) {
 		// first copying data from groups
 		double[] newGroupCombination = new double[dataOfUpperLevels.length];
 		System.arraycopy(dataOfUpperLevels, 0, newGroupCombination, 0, dataOfUpperLevels.length);
@@ -591,8 +611,8 @@ public class AggregationOperator extends AbstractDataProcessing {
 	}
 
 	private void parseTree(AggregationTreeNode node, Attribute[] groupAttributes, double[] dataOfUpperLevels, int groupLevel,
-			List<double[]> allGroupCombinations, List<List<Aggregator>> allAggregators, DataRowFactory factory,
-			Attribute[] newAttributes, boolean isCountingAllCombinations, List<AggregationFunction> aggregationFunctions)
+						   List<double[]> allGroupCombinations, List<List<Aggregator>> allAggregators, DataRowFactory factory,
+						   Attribute[] newAttributes, boolean isCountingAllCombinations, List<AggregationFunction> aggregationFunctions)
 			throws UserError {
 		Attribute currentAttribute = groupAttributes[groupLevel];
 		if (currentAttribute.isNominal()) {
@@ -698,7 +718,7 @@ public class AggregationOperator extends AbstractDataProcessing {
 				Attribute attribute = iterator.next();
 				if (!explicitlyAggregatedAttributes.contains(attribute)) {
 					AggregationFunction function = AggregationFunction.createAggregationFunction(
-							defaultAggregationFunctionName, attribute, ignoreMissings, countOnlyDistinct);
+							defaultAggregationFunctionName, attribute, ignoreMissings, countOnlyDistinct, getCompatibilityLevel());
 					if (function.isCompatible()) {
 						aggregationFunctions.add(function);
 					}
@@ -729,12 +749,14 @@ public class AggregationOperator extends AbstractDataProcessing {
 		type.setExpert(false);
 		types.add(type);
 
-		types.add(new ParameterTypeList(PARAMETER_AGGREGATION_ATTRIBUTES, "The attributes which should be aggregated.",
+		ParameterTypeList aggregation_attribute = new ParameterTypeList(PARAMETER_AGGREGATION_ATTRIBUTES, "The attributes which should be aggregated.",
 				new ParameterTypeAttribute("aggregation_attribute", "Specifies the attribute which is aggregated.",
 						getExampleSetInputPort(), false),
 				new ParameterTypeStringCategory(PARAMETER_AGGREGATION_FUNCTIONS,
 						"The type of the used aggregation function.", functions, functions[0]),
-				false));
+				false);
+		aggregation_attribute.setPrimary(true);
+		types.add(aggregation_attribute);
 		types.add(new ParameterTypeAttributes(PARAMETER_GROUP_BY_ATTRIBUTES,
 				"Performs a grouping by the values of the attributes by the selected attributes.", getExampleSetInputPort(),
 				true, false));
@@ -755,7 +777,7 @@ public class AggregationOperator extends AbstractDataProcessing {
 	@Override
 	public OperatorVersion[] getIncompatibleVersionChanges() {
 		return (OperatorVersion[]) ArrayUtils.addAll(super.getIncompatibleVersionChanges(),
-				new OperatorVersion[] { VERSION_5_1_6, VERSION_5_2_8, VERSION_6_0_6, VERSION_7_4_0 });
+				new OperatorVersion[]{VERSION_5_1_6, VERSION_5_2_8, VERSION_6_0_6, VERSION_7_4_0, VERSION_8_2_0});
 	}
 
 	@Override

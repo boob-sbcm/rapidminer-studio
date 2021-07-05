@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,8 @@
 */
 package com.rapidminer.repository;
 
+
+
 /**
  * Anything that is not a folder.
  *
@@ -25,10 +27,18 @@ package com.rapidminer.repository;
  */
 public interface DataEntry extends DateEntry {
 
-	/** Returns the revision number of this entry. */
-	public int getRevision();
+	/**
+	 * Returns the revision number of this entry.
+	 *
+	 * @deprecated since 9.7. See {@link com.rapidminer.repository.versioned.NewVersionedRepository} for the new
+	 * versioned repository
+	 */
+	@Deprecated
+	default int getRevision() {
+		return 1;
+	}
 
 	/** Returns the size of this entry in bytes. */
-	public long getSize();
+	long getSize();
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -138,41 +138,25 @@ public class CSVSyntaxConfigurationWizardStep extends WizardStep {
 	}
 
 	private void registerListeners() {
-		encodingComboBox.addActionListener(new ActionListener() {
-
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				configuration.setEncoding(Encoding.getEncoding(encodingComboBox.getSelectedItem().toString()));
-				settingsChanged();
-			}
+		encodingComboBox.addActionListener(e -> {
+			configuration.setEncoding(Encoding.getEncoding(encodingComboBox.getSelectedItem().toString()));
+			settingsChanged();
 		});
 
-		trimLinesBox.addActionListener(new ActionListener() {
-
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				configuration.setTrimLines(trimLinesBox.isSelected());
-				settingsChanged();
-			}
+		trimLinesBox.addActionListener(e -> {
+			configuration.setTrimLines(trimLinesBox.isSelected());
+			settingsChanged();
 		});
-		skipCommentsBox.addActionListener(new ActionListener() {
-
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				commentCharacterTextField.setEnabled(skipCommentsBox.isSelected());
-				configuration.setSkipComments(skipCommentsBox.isSelected());
-				settingsChanged();
-			}
+		skipCommentsBox.addActionListener(e -> {
+			commentCharacterTextField.setEnabled(skipCommentsBox.isSelected());
+			configuration.setSkipComments(skipCommentsBox.isSelected());
+			settingsChanged();
 		});
-		useQuotesBox.addActionListener(new ActionListener() {
-
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				quoteCharacterTextField.setEnabled(useQuotesBox.isSelected());
-				escapeCharacterTextField.setEnabled(useQuotesBox.isSelected());
-				configuration.setUseQuotes(useQuotesBox.isSelected());
-				settingsChanged();
-			}
+		useQuotesBox.addActionListener(e -> {
+			quoteCharacterTextField.setEnabled(useQuotesBox.isSelected());
+			escapeCharacterTextField.setEnabled(useQuotesBox.isSelected());
+			configuration.setUseQuotes(useQuotesBox.isSelected());
+			settingsChanged();
 		});
 		quoteCharacterTextField.addKeyListener(new KeyAdapter() {
 
@@ -254,7 +238,7 @@ public class CSVSyntaxConfigurationWizardStep extends WizardStep {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				configuration.setColumnSeparators(getSplitExpression());
 				settingsChanged();
 			}

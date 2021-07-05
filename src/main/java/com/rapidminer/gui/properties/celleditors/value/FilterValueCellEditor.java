@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,19 +18,18 @@
 */
 package com.rapidminer.gui.properties.celleditors.value;
 
-import com.rapidminer.gui.properties.FilterPropertyDialog;
-import com.rapidminer.gui.tools.ResourceAction;
-import com.rapidminer.operator.Operator;
-import com.rapidminer.parameter.ParameterTypeFilter;
-
 import java.awt.Component;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
-
 import javax.swing.AbstractCellEditor;
 import javax.swing.CellEditor;
 import javax.swing.JButton;
 import javax.swing.JTable;
+
+import com.rapidminer.gui.properties.FilterPropertyDialog;
+import com.rapidminer.gui.tools.ResourceAction;
+import com.rapidminer.operator.Operator;
+import com.rapidminer.parameter.ParameterTypeFilter;
 
 
 /**
@@ -59,7 +58,7 @@ public class FilterValueCellEditor extends AbstractCellEditor implements Propert
 			private static final long serialVersionUID = 8274776396885048377L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				dialog = new FilterPropertyDialog(operator, type, "filter");
 				dialog.setVisible(true);
 				// no dialog handling necessary, does everything itself
@@ -98,6 +97,11 @@ public class FilterValueCellEditor extends AbstractCellEditor implements Propert
 	@Override
 	public boolean rendersLabel() {
 		return false;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 
 }

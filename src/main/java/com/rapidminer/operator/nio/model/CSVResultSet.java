@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.operator.nio.model;
 
 import java.io.File;
@@ -31,6 +31,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,17 +51,14 @@ import com.rapidminer.tools.WebServiceTools;
 
 
 /**
- *
  * @author Simon Fischer
- *
  */
 public class CSVResultSet implements DataResultSet {
 
 	/**
-	 * specifies how many rows should be read to guess the column separator, 1 headline + 10 further
-	 * rows
+	 * specifies how many rows should be read to guess the column separator, 1 headline + 99 further rows
 	 */
-	private static final int LINES_FOR_GUESSING = 11;
+	public static final int LINES_FOR_GUESSING = 100;
 	private static final int MAX_LOG_COUNT = 100;
 	private CSVResultSetConfiguration configuration;
 	private LineReader reader;
@@ -77,16 +76,16 @@ public class CSVResultSet implements DataResultSet {
 	private long multiplier;
 	private long lineCounter = 0;
 
-	public static enum ColumnSplitter {
+	public enum ColumnSplitter {
 
 		SEMI_COLON(";", Pattern.compile(";")), COMMA(",", Pattern.compile(",")), TAB("\t", Pattern.compile("\t")), TILDE("~",
 				Pattern.compile("~")), PIPE("|", Pattern.compile("\\|"));
 
 		private final Pattern pattern;
-		private final String seperator;
+		private final String separator;
 
-		ColumnSplitter(String seperator, Pattern pattern) {
-			this.seperator = seperator;
+		ColumnSplitter(String separator, Pattern pattern) {
+			this.separator = separator;
 			this.pattern = pattern;
 		}
 
@@ -95,16 +94,61 @@ public class CSVResultSet implements DataResultSet {
 		}
 
 		public String getString() {
-			return seperator;
+			return separator;
 		}
 
 	}
 
-	private static int getSeperatorCount(Pattern seperatorPattern, String content) {
+	public enum TextQualifier {
+		DOUBLE_QUOTES("\"", Pattern.compile("\"")),
+		SINGLE_QUOTES("'", Pattern.compile("'"));
+
+		private final Pattern pattern;
+		private final String qualifier;
+
+
+		TextQualifier(String qualifier, Pattern pattern) {
+			this.pattern = pattern;
+			this.qualifier = qualifier;
+		}
+
+		public Pattern getPattern() {
+			return pattern;
+		}
+
+		public String getString() {
+			return qualifier;
+		}
+	}
+
+	public enum DecimalCharacter {
+
+		COMMA(",", Pattern.compile(",")),
+		PERIOD(".", Pattern.compile("\\."));
+
+		private final Pattern pattern;
+		private final String character;
+
+		public Pattern getPattern() {
+			return pattern;
+		}
+
+		public String getString() {
+			return character;
+		}
+
+		DecimalCharacter(String character, Pattern pattern) {
+			this.character = character;
+			this.pattern = pattern;
+		}
+
+	}
+
+	private static int getTokenCount(Pattern tokenPattern, String content) {
 		if (content == null) {
 			return 0;
 		}
-		Matcher matcher = seperatorPattern.matcher(content);
+		Matcher matcher = tokenPattern.matcher(content);
 		int count = 0;
 		while (matcher.find()) {
 			count++;
@@ -121,26 +165,15 @@ public class CSVResultSet implements DataResultSet {
 	private void open() throws OperatorException {
 		getErrors().clear();
 		close();
+
+		if (operator == null) {
+			init();
+		}
+
 		InputStream in = openStream();
 		logCount = 0;
 
-		// if encoding is UTF-8, we will have to check whether the stream starts with a BOM. If not
-		// restart stream
-
-		if (configuration.getEncoding().name().equals("UTF-8")) {
-			try {
-				if (in.read() != 239 || in.read() != 187 || in.read() != 191) {
-					in.close();
-					in = openStream();
-				}
-			} catch (IOException e) {
-				try {
-					in.close();
-				} catch (IOException e1) {
-				}
-				throw new UserError(operator, e, 321, configuration.getCsvFile(), e.toString());
-			}
-		}
+		in = cleanInputStream(in);
 
 		reader = new LineReader(in, configuration.getEncoding());
 		parser = new LineParser(configuration);
@@ -157,7 +190,13 @@ public class CSVResultSet implements DataResultSet {
 		}
 
 		try {
-			readNext();
+			int startingRow = configuration.getStartingRow();
+
+			do {
+				// if we read via operator, skip until we reach the starting row
+				// if starting row equals 1 (aka start from the first row), this just prepares the column meta data
+				readNext();
+			} while (operator != null && --startingRow > 0);
 		} catch (IOException e) {
 			try {
 				in.close();
@@ -171,16 +210,91 @@ public class CSVResultSet implements DataResultSet {
 			// "No valid line found.");
 			columnNames = new String[0];
 			valueTypes = new int[0];
-		} else {
-			numColumns = next.length;
-			columnNames = new String[next.length];
-			for (int i = 0; i < next.length; i++) {
-				columnNames[i] = "att" + (i + 1);
-			}
-			valueTypes = new int[next.length];
-			Arrays.fill(valueTypes, Ontology.NOMINAL);
-			currentRow = -1;
+			numColumns = 0;
+			currentRow = 0;
+		} else if (operator != null) {
+			initConfiguration(next);
 		}
+	}
+
+	/**
+	 * Initialize the settings for numColumns, columnNames and valueTypes from the configuration. Uses {@link CSVResultSet#openStream()}
+	 * to get the {@link InputStream}.
+	 *
+	 * @throws OperatorException
+	 */
+	private void init() throws OperatorException {
+		InputStream in = openStream();
+		in = cleanInputStream(in);
+		final LineReader lineReader = new LineReader(in, configuration.getEncoding());
+		final LineParser lineParser = new LineParser(configuration);
+		String[] strings;
+		try {
+			int initFromRow = configuration.hasHeaderRow() ? configuration.getHeaderRow() : configuration.getStartingRow();
+			do {
+				// skip until we reach the starting row
+				strings = readNext(lineReader, lineParser);
+			} while (initFromRow-- > 0);
+		} catch (IOException e) {
+			try {
+				in.close();
+			} catch (IOException e1) {
+			}
+			throw new UserError(operator, e, 321, configuration.getCsvFile(), e.toString());
+		}
+		if (strings != null) {
+			initConfiguration(strings);
+		} else {
+			columnNames = new String[0];
+			valueTypes = new int[0];
+		}
+	}
+
+	/**
+	 * Set the configuration about columns using the given array of {@link String Strings}
+	 *
+	 * @param strings
+	 * 		usually gets the parsed headerRow to set up internal data structures
+	 * @since 9.1
+	 */
+	private void initConfiguration(String[] strings) {
+		numColumns = strings.length;
+		columnNames = new String[strings.length];
+		for (int i = 0; i < strings.length; i++) {
+			columnNames[i] = "att" + (i + 1);
+		}
+		valueTypes = new int[strings.length];
+		Arrays.fill(valueTypes, Ontology.NOMINAL);
+		currentRow = -1;
+	}
+
+	/**
+	 * If the configuration's encoding is UTF-8, we will have to check whether the stream starts with a BOM. If not it
+	 * will be restarted once.
+	 *
+	 * @param in
+	 * 		the {@link InputStream} that needs to be checked
+	 * @return the original or a restarted stream using openStream
+	 * @throws UserError
+	 * 		in case there was a problem reading or restarting the {@link InputStream}
+	 * @since 9.1
+	 */
+	private InputStream cleanInputStream(InputStream in) throws UserError {
+		if (configuration.getEncoding().name().equals("UTF-8")) {
+			try {
+				if (in.read() != 239 || in.read() != 187 || in.read() != 191) {
+					in.close();
+					in = openStream();
+				}
+			} catch (IOException e) {
+				try {
+					in.close();
+				} catch (IOException e1) {
+				}
+				throw new UserError(operator, e, 321, configuration.getCsvFile(), e.toString());
+			}
+		}
+		return in;
 	}
 
 	/**
@@ -188,7 +302,7 @@ public class CSVResultSet implements DataResultSet {
 	 * the most in the first rows.
 	 *
 	 * @param csvFile
-	 *            the csv file
+	 * 		the csv file
 	 * @return the most frequent column separator
 	 */
 	public static String guessColumnSeperator(File csvFile) {
@@ -200,7 +314,7 @@ public class CSVResultSet implements DataResultSet {
 	 * the most in the first rows.
 	 *
 	 * @param csvFile
-	 *            the path to the file to analyze
+	 * 		the path to the file to analyze
 	 * @return the most frequent column separator
 	 */
 	public static String guessColumnSeperator(String csvFile) {
@@ -212,7 +326,7 @@ public class CSVResultSet implements DataResultSet {
 	 * the most in the first rows.
 	 *
 	 * @param csvFile
-	 *            the path to the file to analyze
+	 * 		the path to the file to analyze
 	 * @return the most frequent {@link ColumnSplitter}
 	 */
 	public static ColumnSplitter guessColumnSplitter(String csvFile) {
@@ -224,14 +338,14 @@ public class CSVResultSet implements DataResultSet {
 	 * the most in the first rows.
 	 *
 	 * @param csvFile
-	 *            the file to analyze
+	 * 		the file to analyze
 	 * @return the most frequent {@link ColumnSplitter}
 	 */
 	public static ColumnSplitter guessColumnSplitter(File csvFile) {
 		try (LineReader tempReader = new LineReader(csvFile, StandardCharsets.UTF_8)) {
 
 			/* could be default, apply heuristics to find the column splitter */
-			HashMap<ColumnSplitter, Integer> splitterValues = new HashMap<>();
+			Map<ColumnSplitter, Integer> splitterValues = new HashMap<>();
 			for (ColumnSplitter splitter : ColumnSplitter.values()) {
 				splitterValues.put(splitter, 0);
 			}
@@ -240,21 +354,11 @@ public class CSVResultSet implements DataResultSet {
 
 			while (lineCount < LINES_FOR_GUESSING) {
 				String line = tempReader.readLine();
-				// SEMI_COLON,
-				splitterValues.put(ColumnSplitter.SEMI_COLON, splitterValues.get(ColumnSplitter.SEMI_COLON)
-						+ getSeperatorCount(ColumnSplitter.SEMI_COLON.getPattern(), line));
-				// COMMA,
-				splitterValues.put(ColumnSplitter.COMMA, splitterValues.get(ColumnSplitter.COMMA)
-						+ getSeperatorCount(ColumnSplitter.COMMA.getPattern(), line));
-				// TAB,
-				splitterValues.put(ColumnSplitter.TAB,
-						splitterValues.get(ColumnSplitter.TAB) + getSeperatorCount(ColumnSplitter.TAB.getPattern(), line));
-				// TILDE,
-				splitterValues.put(ColumnSplitter.TILDE, splitterValues.get(ColumnSplitter.TILDE)
-						+ getSeperatorCount(ColumnSplitter.TILDE.getPattern(), line));
-				// PIPE
-				splitterValues.put(ColumnSplitter.PIPE,
-						splitterValues.get(ColumnSplitter.PIPE) + getSeperatorCount(ColumnSplitter.PIPE.getPattern(), line));
+
+				for (ColumnSplitter splitter : ColumnSplitter.values()) {
+					splitterValues.put(splitter, splitterValues.get(splitter)
+							+ getTokenCount(splitter.getPattern(), line));
+				}
 
 				lineCount++;
 			}
@@ -272,7 +376,111 @@ public class CSVResultSet implements DataResultSet {
 			return guessedSplitter;
 
 		} catch (IOException e) {
+			LogService.getRoot().log(Level.WARNING, "Problem reading the file.", e);
 			return ColumnSplitter.SEMI_COLON;
+		}
+	}
+
+
+	/**
+	 * Guesses the Text Qualifier (quotes) being used by counting which one has the most pairs
+	 *
+	 * @param csvFile
+	 * 		the path to the file to analyze
+	 * @return the most frequent {@link ColumnSplitter}
+	 * @since 9.0.0
+	 */
+	public static TextQualifier guessTextQualifier(String csvFile) {
+		return guessTextQualifier(new File(csvFile));
+	}
+
+	/**
+	 * Guesses the {@link TextQualifier} (quotes) being used by counting which one has the most pairs
+	 *
+	 * @param csvFile
+	 * @return the most frequent {@link TextQualifier}
+	 * @since 9.0.0
+	 */
+	public static TextQualifier guessTextQualifier(File csvFile) {
+
+		try (LineReader tempReader = new LineReader(csvFile, StandardCharsets.UTF_8)) {
+			//Set Default
+			TextQualifier guessedQualifier = TextQualifier.DOUBLE_QUOTES;
+
+			Map<TextQualifier, Integer> qualifierValues = new HashMap<>();
+			for (TextQualifier splitter : TextQualifier.values()) {
+				qualifierValues.put(splitter, 0);
+			}
+
+			int lineCount = 0;
+
+			while (lineCount < LINES_FOR_GUESSING) {
+				String line = tempReader.readLine();
+
+				for (TextQualifier tq : TextQualifier.values()) {
+					qualifierValues.put(tq, qualifierValues.get(tq) + getTokenCount(tq.getPattern(), line));
+				}
+
+				lineCount++;
+			}
+
+
+			int maxValue = 0;
+			for (TextQualifier qualifier : TextQualifier.values()) {
+				int numberOfOccurrences = qualifierValues.get(qualifier);
+				if (numberOfOccurrences > maxValue && numberOfOccurrences % 2 == 0) {
+					maxValue = numberOfOccurrences;
+					guessedQualifier = qualifier;
+				}
+			}
+
+
+			return guessedQualifier;
+		} catch (IOException e) {
+			LogService.getRoot().log(Level.WARNING, "Problem reading the file.", e);
+			return TextQualifier.DOUBLE_QUOTES;
+		}
+	}
+
+	public static DecimalCharacter guessDecimalSeparator(String csvFile) {
+		return guessDecimalSeparator(new File(csvFile));
+	}
+
+	public static DecimalCharacter guessDecimalSeparator(File csvFile) {
+		try (LineReader tempReader = new LineReader(csvFile, StandardCharsets.UTF_8)) {
+			//Set Default
+			DecimalCharacter guessedCharacter = DecimalCharacter.PERIOD;
+
+			Map<DecimalCharacter, Integer> decimalCharacterValues = new HashMap<>();
+			for (DecimalCharacter splitter : DecimalCharacter.values()) {
+				decimalCharacterValues.put(splitter, 0);
+			}
+
+			int lineCount = 0;
+
+			while (lineCount < LINES_FOR_GUESSING) {
+				String line = tempReader.readLine();
+
+				for (DecimalCharacter sep : DecimalCharacter.values()) {
+					decimalCharacterValues.put(sep, decimalCharacterValues.get(sep) + getTokenCount(sep.getPattern(), line));
+				}
+
+				lineCount++;
+			}
+
+			int maxValue = 0;
+			for (DecimalCharacter character : DecimalCharacter.values()) {
+				int numberOfOccurrences = decimalCharacterValues.get(character);
+				if (numberOfOccurrences > maxValue) {
+					maxValue = numberOfOccurrences;
+					guessedCharacter = character;
+				}
+			}
+
+			return guessedCharacter;
+		} catch (IOException e) {
+			LogService.getRoot().log(Level.WARNING, "Problem reading the file.", e);
+			return DecimalCharacter.PERIOD;
 		}
 	}
 
@@ -301,7 +509,7 @@ public class CSVResultSet implements DataResultSet {
 
 	private void readNext() throws IOException {
 		do {
-			String line = reader.readLine();
+			String line = reader == null ? null : reader.readLine();
 			if (line == null) {
 				next = null;
 				return;
@@ -309,7 +517,7 @@ public class CSVResultSet implements DataResultSet {
 			try {
 				next = parser.parse(line);
 				if (operator != null && ++lineCounter % 1000 == 0) {
-					long position = reader.getPosition();
+					long position = reader == null ? -1L : reader.getPosition();
 					if (position > 0) {
 						int currentProgress = (int) (position / multiplier);
 						if (currentProgress != operator.getProgress().getCompleted()) {
@@ -345,9 +553,40 @@ public class CSVResultSet implements DataResultSet {
 					}
 				}
 				logCount++;
-				next = new String[] { line };
+				next = new String[]{line};
 			}
 		} while (true);
+	}
+
+	/**
+	 * Gets the next rows parts using the given {@link LineParser}
+	 *
+	 * @param lineReader
+	 * 		to be used for reading the next row
+	 * @param lineParser
+	 * 		to be used to parse the row
+	 * @return the output of the parser or an array with one entry being the whole rows content. Can be {@code null} if the lineReader returned {@code null}.
+	 * @throws IOException
+	 * 		in case the lineReader got an error
+	 * @since 9.1
+	 */
+	private static String[] readNext(LineReader lineReader, LineParser lineParser) throws IOException {
+		String[] myNext;
+		do {
+			String line = lineReader == null ? null : lineReader.readLine();
+			if (line == null) {
+				return null;
+			}
+			try {
+				myNext = lineParser.parse(line);
+				if (myNext != null) { // no comment read
+					break;
+				}
+			} catch (CSVParseException e) {
+				continue;
+			}
+		} while (true);
+		return myNext;
 	}
 
 	@Override

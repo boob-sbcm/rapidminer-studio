@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,9 +18,11 @@
 */
 package com.rapidminer.parameter;
 
-import java.util.Iterator;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -28,8 +30,8 @@ import org.w3c.dom.Element;
 import com.rapidminer.MacroHandler;
 import com.rapidminer.io.process.XMLTools;
 import com.rapidminer.operator.Operator;
-import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.XMLException;
+import com.rapidminer.tools.encryption.EncryptionProvider;
 
 
 /**
@@ -148,7 +150,13 @@ public class ParameterTypeList extends CombinedParameterType {
 	}
 
 	@Override
+	@Deprecated
 	public Element getXML(String key, String value, boolean hideDefault, Document doc) {
+		return getXML(key, value, hideDefault, EncryptionProvider.DEFAULT_CONTEXT, doc);
+	}
+
+	@Override
+	public Element getXML(String key, String value, boolean hideDefault, String encryptionContext, Document doc) {
 		Element element = doc.createElement("list");
 		element.setAttribute("key", key);
 		List<String[]> list = null;
@@ -160,39 +168,10 @@ public class ParameterTypeList extends CombinedParameterType {
 		if (list != null) {
 			for (Object object : list) {
 				Object[] entry = (Object[]) object;
-				element.appendChild(valueType.getXML((String) entry[0], entry[1].toString(), false, doc));
+				element.appendChild(valueType.getXML((String) entry[0], entry[1].toString(), false, encryptionContext, doc));
 			}
 		}
 		return element;
-	}
-
-	/** @deprecated Replaced by DOM. */
-	@Override
-	@Deprecated
-	public String getXML(String indent, String key, String value, boolean hideDefault) {
-		StringBuffer result = new StringBuffer();
-		result.append(indent + "<list key=\"" + key + "\">" + Tools.getLineSeparator());
-
-		if (value != null) {
-			List<String[]> list = Parameters.transformString2List(value);
-			Iterator<String[]> i = list.iterator();
-			while (i.hasNext()) {
-				Object[] current = i.next();
-				result.append(valueType.getXML(indent + "  ", (String) current[0], current[1].toString(), false));
-			}
-		} else {
-			List<String[]> defaultValue = getDefaultValue();
-			if (defaultValue != null) {
-				List<String[]> defaultList = defaultValue;
-				Iterator<String[]> i = defaultList.iterator();
-				while (i.hasNext()) {
-					Object[] current = i.next();
-					result.append(valueType.getXML(indent + "  ", (String) current[0], current[1].toString(), false));
-				}
-			}
-		}
-		result.append(indent + "</list>" + Tools.getLineSeparator());
-		return result.toString();
 	}
 
 	@Override
@@ -211,54 +190,37 @@ public class ParameterTypeList extends CombinedParameterType {
 	}
 
 	public static String transformList2String(List<String[]> parameterList) {
-		StringBuffer result = new StringBuffer();
-		Iterator<String[]> i = parameterList.iterator();
-		boolean first = true;
-		while (i.hasNext()) {
-			String[] objects = i.next();
-			if (objects.length != 2) {
-				continue;
-			}
-
-			String firstToken = objects[0];
-			String secondToken = objects[1];
-			if (!first) {
-				result.append(Parameters.RECORD_SEPARATOR);
-			}
-			if (secondToken != null) {
-				if (firstToken != null) {
-					result.append(firstToken);
-				}
-				result.append(Parameters.PAIR_SEPARATOR);
-				if (secondToken != null) {
-					result.append(secondToken);
-				}
-			}
-			first = false;
-		}
-		return result.toString();
+		return parameterList.stream().map(vals -> Arrays.stream(vals)
+				.collect(Collectors.joining(Character.toString(Parameters.PAIR_SEPARATOR))))
+				.collect(Collectors.joining(Character.toString(Parameters.RECORD_SEPARATOR)));
 	}
 
 	public static List<String[]> transformString2List(String listString) {
-		List<String[]> result = new LinkedList<>();
-		String[] splittedList = listString.split(Character.valueOf(Parameters.RECORD_SEPARATOR).toString());
-		for (String record : splittedList) {
-			if (record.length() > 0) {
-				String[] pair = record.split(Character.valueOf(Parameters.PAIR_SEPARATOR).toString());
-				if (pair.length == 2 && pair[0].length() > 0 && pair[1].length() > 0) {
-					result.add(new String[] { pair[0], pair[1] });
-				}
-			}
-		}
-		return result;
+		return Arrays.stream(listString.split(Character.toString(Parameters.RECORD_SEPARATOR)))
+				.filter(record -> record.length() > 0)
+				.map(record -> record.split(Character.toString(Parameters.PAIR_SEPARATOR)))
+				.filter(pair -> pair.length == 2 && !pair[0].isEmpty() && !pair[1].isEmpty())
+				.collect(Collectors.toList());
 	}
 
+	/** @return the changed value after all pairs were notified */
 	@Override
 	public String notifyOperatorRenaming(String oldOperatorName, String newOperatorName, String parameterValue) {
+		return notifyOperatorRenamingReplacing((t, v) -> t.notifyOperatorRenaming(oldOperatorName, newOperatorName, v), parameterValue);
+	}
+
+	/** @return the changed value after all pairs were notified */
+	@Override
+	public String notifyOperatorReplacing(String oldName, Operator oldOp, String newName, Operator newOp, String parameterValue) {
+		return notifyOperatorRenamingReplacing((t, v) -> t.notifyOperatorReplacing(oldName, oldOp, newName, newOp, v), parameterValue);
+	}
+
+	/** @since 9.3 */
+	private String notifyOperatorRenamingReplacing(BiFunction<ParameterType, String, String> replacer, String parameterValue) {
 		List<String[]> list = transformString2List(parameterValue);
 		for (String[] pair : list) {
-			pair[0] = keyType.notifyOperatorRenaming(oldOperatorName, newOperatorName, pair[0]);
-			pair[1] = valueType.notifyOperatorRenaming(oldOperatorName, newOperatorName, pair[1]);
+			pair[0] = replacer.apply(keyType, pair[0]);
+			pair[1] = replacer.apply(valueType, pair[1]);
 		}
 		return transformList2String(list);
 	}

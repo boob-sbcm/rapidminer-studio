@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -20,12 +20,14 @@ package com.rapidminer.tools.expression;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 import com.rapidminer.Process;
 import com.rapidminer.operator.OperatorVersion;
 import com.rapidminer.tools.expression.internal.ConstantResolver;
 import com.rapidminer.tools.expression.internal.SimpleExpressionContext;
 import com.rapidminer.tools.expression.internal.antlr.AntlrParser;
+import com.rapidminer.tools.expression.internal.function.eval.AttributeEvaluation;
 import com.rapidminer.tools.expression.internal.function.eval.Evaluation;
 import com.rapidminer.tools.expression.internal.function.eval.TypeConstants;
 import com.rapidminer.tools.expression.internal.function.process.MacroValue;
@@ -78,18 +80,22 @@ public class ExpressionParserBuilder {
 			evalFunction = new Evaluation();
 			functions.add(evalFunction);
 		}
+		//add the attribute eval function
+		AttributeEvaluation attributeEvalFunction = new AttributeEvaluation();
+		functions.add(attributeEvalFunction);
 
 		// add eval constants
 		constantResolvers.add(new ConstantResolver(TypeConstants.INSTANCE.getKey(), TypeConstants.INSTANCE.getConstants()));
 
 		ExpressionContext context = new SimpleExpressionContext(functions, scopeResolvers, dynamicsResolvers,
-				constantResolvers);
+				constantResolvers, getStopChecker());
 		AntlrParser parser = new AntlrParser(context);
 
 		if (!compatibleWithOldParser) {
 			// set parser for eval function
 			evalFunction.setParser(parser);
 		}
+		attributeEvalFunction.setContext(context);
 
 		return parser;
 	}
@@ -186,6 +192,14 @@ public class ExpressionParserBuilder {
 			compatibleWithOldParser = true;
 		}
 		return this;
+	}
+
+	/** @since 9.6.0 */
+	private Callable<Void> getStopChecker() {
+		if (process != null) {
+			return  () -> {process.getRootOperator().checkForStop(); return null;};
+		}
+		return () -> null;
 	}
 
 }

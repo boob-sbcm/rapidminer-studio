@@ -1,23 +1,24 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.look.ui;
 
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -27,7 +28,6 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.geom.Rectangle2D;
-
 import javax.swing.JComponent;
 import javax.swing.JSlider;
 import javax.swing.SwingConstants;
@@ -60,6 +60,16 @@ public class SliderUI extends BasicSliderUI {
 			SliderUI.this.thumbIsPressed = false;
 			getSlider().repaint();
 		}
+
+
+		private Rectangle getThumbBounds() {
+			return SliderUI.this.thumbRect;
+		}
+
+		private JSlider getSlider() {
+			return SliderUI.this.slider;
+		}
+
 	}
 
 	private boolean thumbIsPressed = false;
@@ -72,11 +82,6 @@ public class SliderUI extends BasicSliderUI {
 
 	public SliderUI(JSlider jSlider) {
 		super(jSlider);
-	}
-
-	@Override
-	public void installUI(JComponent c) {
-		super.installUI(c);
 	}
 
 	@Override
@@ -196,11 +201,8 @@ public class SliderUI extends BasicSliderUI {
 					RapidLookAndFeel.CORNER_DEFAULT_RADIUS / 2);
 
 			// draw fill bar
-			int curVal = this.slider.getModel().getValue();
-			double percentage = (double) curVal / (slider.getModel().getMaximum() - slider.getModel().getExtent());
-
 			g2.setColor(Colors.SLIDER_TRACK_FOREGROUND);
-			g2.fill(new Rectangle2D.Double(4, trackTop + 2, (length - trackBuffer) * percentage, 3));
+			g2.fill(new Rectangle2D.Double(4, trackTop + 2, this.thumbRect.x + 2, 3));
 
 			// draw border
 			g2.setColor(Colors.SLIDER_TRACK_BORDER);
@@ -221,12 +223,8 @@ public class SliderUI extends BasicSliderUI {
 					RapidLookAndFeel.CORNER_DEFAULT_RADIUS / 2);
 
 			// draw fill bar
-			int curVal = this.slider.getModel().getValue();
-			double percentage = (double) curVal / (slider.getModel().getMaximum() - slider.getModel().getExtent());
-
 			g2.setColor(Colors.SLIDER_TRACK_FOREGROUND);
-			g2.fill(new Rectangle2D.Double(trackLeft + 2, (h - trackBuffer) * (1d - percentage), 3, (h - trackBuffer)
-					* percentage));
+			g2.fill(new Rectangle2D.Double(trackLeft + 2, this.thumbRect.y - 2, 3, h - this.thumbRect.y - 4));
 
 			// draw border
 			g2.setColor(Colors.SLIDER_TRACK_BORDER);
@@ -236,7 +234,9 @@ public class SliderUI extends BasicSliderUI {
 	}
 
 	@Override
-	public void paintFocus(Graphics g) {}
+	public void paintFocus(Graphics g) {
+		// intentionally left empty
+	}
 
 	@Override
 	protected void calculateThumbSize() {
@@ -257,14 +257,6 @@ public class SliderUI extends BasicSliderUI {
 		} else {
 			thumbRect.x -= 4;
 		}
-	}
-
-	private Rectangle getThumbBounds() {
-		return this.thumbRect;
-	}
-
-	private JSlider getSlider() {
-		return this.slider;
 	}
 
 	protected MouseListener createThumbPressedListener() {
@@ -302,7 +294,7 @@ public class SliderUI extends BasicSliderUI {
 		Graphics2D g2 = (Graphics2D) g;
 
 		int curVal = this.slider.getModel().getValue();
-		double percentage = (double) curVal / (slider.getModel().getMaximum() - slider.getModel().getExtent());
+		double percentage = (double) (curVal - slider.getModel().getMinimum()) / (slider.getModel().getMaximum() - slider.getModel().getMinimum());
 
 		boolean isBackground = false;
 		if (trackRect.width * percentage > x) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -39,7 +39,9 @@ import org.w3c.dom.Element;
  * of these operators.
  * 
  * @author Sebastian Land
+ * @deprecated since 9.7, but was unused even before
  */
+@Deprecated
 public abstract class LibraryOperatorDescription extends OperatorDescription {
 
 	private static final String ATTRIBUTE_KEY = "key";

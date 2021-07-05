@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -114,7 +114,9 @@ public abstract class AbstractExampleTable implements ExampleTable {
 		if (name == null) {
 			return null;
 		}
-		for (Attribute att : attributes) {
+		//copy to prevent ConcurrentModificationException
+		List<Attribute> attributesCopy = new ArrayList<>(this.attributes);
+		for (Attribute att : attributesCopy) {
 			if (att != null) {
 				if (att.getName().equals(name)) {
 					return att;

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -33,6 +33,8 @@ import com.rapidminer.core.io.data.DataSet;
 import com.rapidminer.core.io.data.DataSetException;
 import com.rapidminer.core.io.data.DataSetRow;
 import com.rapidminer.core.io.data.ParseException;
+import com.rapidminer.operator.nio.model.ExcelResultSetConfiguration;
+import com.rapidminer.parameter.ParameterTypeDateFormat;
 import com.rapidminer.studio.io.data.HeaderRowBehindStartRowException;
 import com.rapidminer.studio.io.data.HeaderRowNotFoundException;
 import com.rapidminer.studio.io.data.StartRowNotFoundException;
@@ -329,7 +331,8 @@ public abstract class AbstractExcelDataSourceDataTest {
 
 		try (ExcelDataSource dataSource = new ExcelDataSource()) {
 			dataSource.setLocation(testFile.toPath());
-			dataSource.getResultSetConfiguration().setSheet(3);
+			dataSource.getResultSetConfiguration().setSheetByName("Tabelle3");
+			dataSource.getResultSetConfiguration().setSheetSelectionMode(ExcelResultSetConfiguration.SheetSelectionMode.BY_NAME);
 			dataSource.getResultSetConfiguration().setRowOffset(0);
 			dataSource.setHeaderRowIndex(0);
 			configureDataSource(dataSource);
@@ -894,7 +897,7 @@ public abstract class AbstractExcelDataSourceDataTest {
 			dataSource.createMetaData();
 
 			int dateColumnIndex = 6;
-			SimpleDateFormat dateFormat = new SimpleDateFormat("M/d/yy h:mm a");
+			SimpleDateFormat dateFormat = new SimpleDateFormat(ParameterTypeDateFormat.DATE_TIME_FORMAT_M_D_YY_H_MM_A);
 
 			// check meta data and set to date
 			checkColumnMetaData(dataSource.getMetadata().getColumnMetaData(dateColumnIndex), "date", ColumnType.CATEGORICAL);

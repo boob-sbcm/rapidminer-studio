@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -32,13 +32,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import javax.swing.SwingWorker;
 import javax.swing.event.EventListenerList;
 
 
 /**
  * Data model and controller for the {@link MetaDataStatisticsViewer}. The statistics for the
- * {@link ExampleSet} are created in a {@link SwingWorker}, so model creation does not block the
+ * {@link ExampleSet} are created in a {@link com.rapidminer.gui.tools.MultiSwingWorker}, so model creation does not block the
  * GUI.
  * <p>
  * Note that the {@link ExampleSet} which needs to be pased to the constructor is only stored via

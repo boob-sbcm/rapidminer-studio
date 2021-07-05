@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -178,7 +178,7 @@ public class OperatorDocumentation {
 	public void addExample(Process process, String comment) {
 		Element exampleElement = element != null ? element.getOwnerDocument().createElement("example") : null;
 		ExampleProcess exampleProcess = new ExampleProcess(exampleElement);
-		exampleProcess.setProcessXML(process.getRootOperator().getXML(true));
+		exampleProcess.setProcessXML(process.getRootOperator().getXML(true, null));
 		if (comment != null) {
 			exampleProcess.setComment(comment);
 		}

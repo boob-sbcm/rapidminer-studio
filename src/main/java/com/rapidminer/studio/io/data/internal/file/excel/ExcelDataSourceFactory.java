@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -41,11 +41,16 @@ public final class ExcelDataSourceFactory extends FileDataSourceFactory<ExcelDat
 			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"));
 	private static final Set<String> EXCEL_FILE_ENDINGS = new HashSet<>(Arrays.asList("xlsx", "xls"));
 
+	public static final String EXCEL_DATA_SOURCE_FACTORY_I18N_KEY = "excel";
+
+
 	/**
 	 * Constructs a new factory instance.
 	 */
 	public ExcelDataSourceFactory() {
-		super("excel", EXCEL_MIME_TYPES, EXCEL_FILE_ENDINGS, ExcelSheetSelectionWizardStep.EXCEL_SHEET_SELECTION_STEP_ID);
+		super(EXCEL_DATA_SOURCE_FACTORY_I18N_KEY, EXCEL_MIME_TYPES, EXCEL_FILE_ENDINGS,
+				ExcelSheetSelectionWizardStep.EXCEL_SHEET_SELECTION_STEP_ID);
+
 	}
 
 	@Override

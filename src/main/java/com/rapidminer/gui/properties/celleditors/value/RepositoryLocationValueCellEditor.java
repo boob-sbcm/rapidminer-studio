@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,10 +23,9 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.awt.event.FocusListener;
-
+import java.util.function.Predicate;
 import javax.swing.AbstractCellEditor;
 import javax.swing.JButton;
 import javax.swing.JPanel;
@@ -36,6 +35,7 @@ import javax.swing.JTextField;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.parameter.ParameterTypeRepositoryLocation;
+import com.rapidminer.repository.Entry;
 import com.rapidminer.repository.RepositoryLocation;
 import com.rapidminer.repository.gui.RepositoryLocationChooser;
 
@@ -56,18 +56,19 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 
 	private Operator operator;
 
+	private final JButton button;
+
+	protected final Predicate<Entry> repositoryFilterDefinedInParameterType;
+
+
 	public RepositoryLocationValueCellEditor(final ParameterTypeRepositoryLocation type) {
+		repositoryFilterDefinedInParameterType = type.getRepositoryFilter();
+
 		GridBagLayout gridBagLayout = new GridBagLayout();
 		panel.setLayout(gridBagLayout);
 		panel.setToolTipText(type.getDescription());
 		textField.setToolTipText(type.getDescription());
-		textField.addActionListener(new ActionListener() {
-
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				fireEditingStopped();
-			}
-		});
+		textField.addActionListener(e -> fireEditingStopped());
 
 		GridBagConstraints c = new GridBagConstraints();
 		c.fill = GridBagConstraints.BOTH;
@@ -76,7 +77,7 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 		c.gridwidth = GridBagConstraints.RELATIVE;
 		panel.add(textField, c);
 
-		final JButton button = new JButton(new ResourceAction(true, "repository_select_location") {
+		button = new JButton(new ResourceAction(true, "repository_select_location") {
 
 			private static final long serialVersionUID = 1L;
 			{
@@ -84,38 +85,27 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 			}
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				com.rapidminer.Process process = RepositoryLocationValueCellEditor.this.operator != null ? RepositoryLocationValueCellEditor.this.operator
 						.getProcess() : null;
-						RepositoryLocation processLocation = null;
-						if (process != null) {
-							processLocation = process.getRepositoryLocation();
-							if (processLocation != null) {
-								processLocation = processLocation.parent();
-							}
-						}
+				RepositoryLocation processLocation = null;
+				if (process != null) {
+					processLocation = process.getRepositoryLocation();
+					if (processLocation != null) {
+						processLocation = processLocation.parent();
+					}
+				}
 
-						String locationName = RepositoryLocationChooser.selectLocation(processLocation, textField.getText(), panel,
-								type.isAllowEntries(), type.isAllowFolders(), false, type.isEnforceValidRepositoryEntryName(),
-								type.isOnlyWriteableLocations());
-						// if (locationName != null) {
-						// if ((operator != null) && (operator.getProcess() != null)) {
-						// try {
-						// RepositoryLocation loc = new RepositoryLocation(processLocation, locationName);
-						// locationName = operator.getProcess().makeRelativeRepositoryLocation(loc);
-						// } catch (Exception ex) {
-						// LogService.getRoot().log(Level.WARNING,
-						// "Cannot make relative process location for '"+locationName+"': "+ex, ex);
-						// }
-						// }
-						// }
-						if (locationName != null) {
-							textField.setText(locationName);
-						}
-						fireEditingStopped();
+				String locationName = RepositoryLocationChooser.selectLocation(processLocation, textField.getText(),
+						panel, type.isAllowEntries(), type.isAllowFolders(), false,
+						type.isEnforceValidRepositoryEntryName(), type.isOnlyWriteableLocations(), getRepositoryFilter());
+				if (locationName != null) {
+					textField.setText(locationName);
+				}
+				fireEditingStopped();
 			}
 		});
-		button.addFocusListener(new FocusListener() {
+		button.addFocusListener(new FocusAdapter() {
 
 			@Override
 			public void focusLost(FocusEvent e) {
@@ -133,9 +123,6 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 					fireEditingStopped();
 				}
 			}
-
-			@Override
-			public void focusGained(FocusEvent e) {}
 		});
 		button.setMargin(new Insets(0, 0, 0, 0));
 		c.gridwidth = GridBagConstraints.REMAINDER;
@@ -143,7 +130,7 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 		c.insets = new Insets(0, 5, 0, 0);
 		panel.add(button, c);
 
-		textField.addFocusListener(new FocusListener() {
+		textField.addFocusListener(new FocusAdapter() {
 
 			@Override
 			public void focusLost(FocusEvent e) {
@@ -161,11 +148,22 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 					fireEditingStopped();
 				}
 			}
-
-			@Override
-			public void focusGained(FocusEvent e) {}
 		});
 
+	}
+
+	/**
+	 * If the items in a RepositoryLocationChooserDialog, containing a {@link com.rapidminer.repository.gui.RepositoryTree},
+	 * should show only a subset of the whole tree, provide a {@link Predicate<Entry>} to accept those. Defaults to the
+	 * filter defined in the {@link ParameterTypeRepositoryLocation#getRepositoryFilter()}, which itself defaults to
+	 * {@code null}, meaning everything is visible.
+	 *
+	 * @return the {@link Predicate<Entry>} that accepts {@link Entry Entries} that should be visualized in the {@link
+	 * com.rapidminer.repository.gui.RepositoryTree}
+	 * @since 9.4
+	 */
+	protected Predicate<Entry> getRepositoryFilter() {
+		return repositoryFilterDefinedInParameterType;
 	}
 
 	@Override
@@ -198,6 +196,11 @@ public class RepositoryLocationValueCellEditor extends AbstractCellEditor implem
 	@Override
 	public void setOperator(Operator operator) {
 		this.operator = operator;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 
 	/**

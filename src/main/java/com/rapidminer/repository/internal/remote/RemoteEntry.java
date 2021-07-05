@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -20,9 +20,9 @@ package com.rapidminer.repository.internal.remote;
 
 import java.util.List;
 
-import com.rapid_i.repository.wsimport.AccessRights;
 import com.rapidminer.repository.Entry;
 import com.rapidminer.repository.RepositoryException;
+import com.rapidminer.repository.internal.remote.model.AccessRights;
 import com.rapidminer.tools.PasswordInputCanceledException;
 
 

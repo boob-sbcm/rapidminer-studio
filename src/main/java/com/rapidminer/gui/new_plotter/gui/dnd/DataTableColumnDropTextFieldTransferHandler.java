@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -40,8 +40,9 @@ import javax.swing.tree.TreePath;
  * {@link TransferHandler} for TextFields that allow dropping {@link DataTableColumn}s on them.
  * 
  * @author Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class DataTableColumnDropTextFieldTransferHandler extends AbstractPatchedTransferHandler implements
 		TreeSelectionListener {
 

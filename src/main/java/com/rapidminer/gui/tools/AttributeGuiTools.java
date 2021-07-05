@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,9 +19,10 @@
 package com.rapidminer.gui.tools;
 
 import java.awt.Color;
+import java.awt.Polygon;
 import java.util.HashMap;
 import java.util.Map;
-
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 
 import com.rapidminer.example.Attributes;
@@ -60,6 +61,11 @@ public class AttributeGuiTools {
 	 * {@link #getColorForAttributeRole(String)}
 	 */
 	public static final String GENERIC_SPECIAL_ATTRIBUTE_NAME = "special";
+
+	public static final Icon NUMERICAL_COLUMN_ICON = SwingTools.createIcon("16/symbol_hash.png", true);
+	public static final Icon NOMINAL_COLUMN_ICON = SwingTools.createIcon("16/cubes.png", true);
+	public static final Icon DATE_COLUMN_ICON = SwingTools.createIcon("16/calendar_clock.png", true);
+	public static final Icon UNKNOWN_COLUMN_ICON = SwingTools.createIconFromColor(Color.GRAY, new Color(0, 0, 0, 0), 16, 16, new Polygon(new int[]{8, 2, 8, 14}, new int[]{14, 8, 2, 8}, 4));
 
 	static {
 		// fill mapping between value types and icons

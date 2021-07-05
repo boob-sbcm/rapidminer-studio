@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -172,6 +172,10 @@ public class URLExampleSource extends AbstractExampleSource {
 					// do nothing
 				}
 			}
+		}
+
+		if (builder == null) {
+			builder = ExampleSets.from(new ArrayList<>());
 		}
 
 		ExampleSet exampleSet = builder.build();

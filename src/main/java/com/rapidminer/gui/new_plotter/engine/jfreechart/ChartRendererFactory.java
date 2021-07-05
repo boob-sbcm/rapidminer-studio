@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -71,8 +71,9 @@ import org.jfree.data.xy.XYDataset;
  * Helper class for created JFreeChart renderers for a given ValueSource.
  * 
  * @author Marius Helf
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class ChartRendererFactory {
 
 	/**

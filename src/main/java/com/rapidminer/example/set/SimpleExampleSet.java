@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -31,7 +31,7 @@ import com.rapidminer.example.SimpleAttributes;
 import com.rapidminer.example.table.DataRow;
 import com.rapidminer.example.table.ExampleTable;
 import com.rapidminer.example.table.MemoryExampleTable;
-import com.rapidminer.example.table.internal.ColumnarExampleTable;
+import com.rapidminer.example.table.internal.CleanableExampleTable;
 
 
 /**
@@ -179,9 +179,14 @@ public class SimpleExampleSet extends AbstractExampleSet {
 
 	@Override
 	public void cleanup() {
-		if (exampleTable instanceof ColumnarExampleTable) {
-			ColumnarExampleTable table = (ColumnarExampleTable) exampleTable;
+		if (exampleTable instanceof CleanableExampleTable) {
+			CleanableExampleTable table = (CleanableExampleTable) exampleTable;
 			this.exampleTable = table.columnCleanupClone(attributes);
 		}
+	}
+
+	@Override
+	public boolean isThreadSafeView() {
+		return true;
 	}
 }

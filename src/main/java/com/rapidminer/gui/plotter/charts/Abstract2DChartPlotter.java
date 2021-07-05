@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.plotter.charts;
 
 import java.awt.Color;
@@ -64,6 +64,7 @@ import com.rapidminer.datatable.DataTable;
 import com.rapidminer.datatable.DataTableRow;
 import com.rapidminer.gui.plotter.PlotterConfigurationModel;
 import com.rapidminer.gui.plotter.RangeablePlotterAdapter;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.ObjectVisualizerService;
 import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.math.MathFunctions;
@@ -73,7 +74,9 @@ import com.rapidminer.tools.math.MathFunctions;
  * This is the abstract superclass for scatter plotter based on JFreeChart.
  *
  * @author Ingo Mierswa
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 
 	private static final long serialVersionUID = 4568273282283350833L;
@@ -374,8 +377,11 @@ public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 			synchronized (dataTable) {
 				if (colorColumn >= 0) {
 					for (int v = 0; v < dataTable.getNumberOfValues(colorColumn); v++) {
-						dataCollection.put(dataTable.mapIndex(colorColumn, v), new LinkedList<double[]>());
-						idCollection.put(dataTable.mapIndex(colorColumn, v), new LinkedList<String>());
+						String key = dataTable.mapIndex(colorColumn, v);
+						if(key !=null) {
+							dataCollection.put(key, new LinkedList<>());
+							idCollection.put(key, new LinkedList<>());
+						}
 					}
 				}
 
@@ -523,9 +529,9 @@ public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 						dataSet,                  // data
 						PlotOrientation.VERTICAL, // orientation
 						colorColumn >= 0 && size < 100 ? true : false, // include legend
-								true,                     // tooltips
-								false                     // URLs
-						);
+						true,                     // tooltips
+						false                     // URLs
+				);
 
 				// renderer settings
 				try {
@@ -544,8 +550,8 @@ public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 
 					BlockContainer wrapper = new BlockContainer(new BorderArrangement());
 
-					LabelBlock title = new LabelBlock(getDataTable().getColumnName(colorColumn), new Font("SansSerif",
-							Font.BOLD, 12));
+					LabelBlock title = new LabelBlock(getDataTable().getColumnName(colorColumn),
+							FontTools.getFont(Font.SANS_SERIF, Font.BOLD, 12));
 					title.setPadding(0, 5, 5, 5);
 					wrapper.add(title, RectangleEdge.LEFT);
 
@@ -564,7 +570,7 @@ public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 						false,                    // include legend
 						true,                     // tooltips
 						false                     // URLs
-						);
+				);
 
 				// renderer settings
 				try {
@@ -602,8 +608,8 @@ public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 
 				BlockContainer wrapper = new BlockContainer(new BorderArrangement());
 
-				LabelBlock title = new LabelBlock(getDataTable().getColumnName(colorColumn), new Font("SansSerif",
-						Font.BOLD, 12));
+				LabelBlock title = new LabelBlock(getDataTable().getColumnName(colorColumn),
+						FontTools.getFont(Font.SANS_SERIF, Font.BOLD, 12));
 				title.setPadding(0, 5, 5, 5);
 				wrapper.add(title, RectangleEdge.LEFT);
 
@@ -623,7 +629,7 @@ public abstract class Abstract2DChartPlotter extends RangeablePlotterAdapter {
 					false,                    // include legend
 					true,                     // tooltips
 					false                     // URLs
-					);
+			);
 		}
 
 		// GENERAL CHART SETTINGS

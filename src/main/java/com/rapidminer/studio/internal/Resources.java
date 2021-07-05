@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,11 +18,18 @@
 */
 package com.rapidminer.studio.internal;
 
+import java.security.AccessControlException;
+import java.security.AccessController;
+
 import com.rapidminer.Process;
 import com.rapidminer.core.concurrency.ConcurrencyContext;
 import com.rapidminer.operator.Operator;
+import com.rapidminer.operator.ProcessRootOperator;
 import com.rapidminer.operator.UserData;
+import com.rapidminer.security.PluginSandboxPolicy;
+import com.rapidminer.studio.concurrency.internal.ConcurrencyExecutionService;
 import com.rapidminer.studio.concurrency.internal.StudioConcurrencyContext;
+import com.rapidminer.tools.Tools;
 
 
 /**
@@ -34,7 +41,7 @@ import com.rapidminer.studio.concurrency.internal.StudioConcurrencyContext;
  */
 public class Resources {
 
-	private static final String USER_DATA_KEY = "com.rapidminer.core.concurrency.ContextUserData";
+	public static final String CONTEXT_KEY = "com.rapidminer.core.concurrency.ContextUserData";
 
 	/**
 	 * Wrapper to store {@link ConcurrencyContext} within the root operator of a process.
@@ -61,6 +68,25 @@ public class Resources {
 	}
 
 	/**
+	 * Wrapper to store {@link ConcurrencyContext} within the root operator of a process.
+	 *
+	 * </p> Internal, do not use. Throws {@link UnsupportedOperationException} if used by 3rd parties.
+	 *
+	 * @author Marco Boeck
+	 */
+	public static class OverridingContextUserData extends ContextUserData {
+
+		/**
+		 * @throws UnsupportedOperationException if used by 3rd parties
+		 */
+		public OverridingContextUserData(ConcurrencyContext context) {
+			super(context);
+			// make sure this cannot be called without RapidMiner internal permissions
+			Tools.requireInternalPermission();
+		}
+	}
+
+	/**
 	 * Provides a {@link ConcurrencyContext} for the given {@link Operator}.
 	 *
 	 * @param operator
@@ -71,16 +97,24 @@ public class Resources {
 		if (operator == null) {
 			throw new IllegalArgumentException("operator must not be null");
 		}
-		Operator root = operator.getRoot();
-		if (root.getUserData(USER_DATA_KEY) != null) {
-			ContextUserData data = (ContextUserData) root.getUserData(USER_DATA_KEY);
-			ConcurrencyContext context = data.getContext();
-			return context;
+
+		// if anyone has set a ConcurrencyContext that should override the regular ones, use it
+		// currently used by RapidMiner AI Hub web services
+		ProcessRootOperator rootOperator = operator.getProcess().getRootOperator();
+		if (rootOperator.getUserData(ConcurrencyExecutionService.OVERRIDING_CONTEXT) != null) {
+			ContextUserData data = (ContextUserData) rootOperator.getUserData(ConcurrencyExecutionService.OVERRIDING_CONTEXT);
+			return data.getContext();
 		}
+
+		if (rootOperator.getUserData(CONTEXT_KEY) != null) {
+			ContextUserData data = (ContextUserData) rootOperator.getUserData(CONTEXT_KEY);
+			return data.getContext();
+		}
+
 		Process process = operator.getProcess();
 		StudioConcurrencyContext context = new StudioConcurrencyContext(process);
 		ContextUserData data = new ContextUserData(context);
-		root.setUserData(USER_DATA_KEY, data);
+		rootOperator.setUserData(CONTEXT_KEY, data);
 		return context;
 	}
 }

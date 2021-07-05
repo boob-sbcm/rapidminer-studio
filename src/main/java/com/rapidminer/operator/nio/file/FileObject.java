@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -43,6 +43,9 @@ public abstract class FileObject extends ResultObjectAdapter {
 
 	/**
 	 * Open Stream to read data in this Object.
+	 * <p>
+	 * <strong>Attention:</strong> Do not forget to close this stream again in all cases once you are done!
+	 * </p>
 	 *
 	 * @throws OperatorException
 	 */
@@ -96,15 +99,14 @@ public abstract class FileObject extends ResultObjectAdapter {
 		try {
 			fileInputStream = openStream();
 			return new BufferedFileObject(Tools.readInputStream(fileInputStream));
-		} catch (OperatorException e) {
-			throw new WriteAbortedException("Could not write FileObject", e);
-		} catch (IOException e) {
+		} catch (OperatorException | IOException e) {
 			throw new WriteAbortedException("Could not write FileObject", e);
 		} finally {
 			if (fileInputStream != null) {
 				try {
 					fileInputStream.close();
 				} catch (IOException e) {
+					// closing failed don't care
 				}
 			}
 		}

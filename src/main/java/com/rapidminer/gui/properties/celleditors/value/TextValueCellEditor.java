@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -50,7 +50,7 @@ public class TextValueCellEditor extends AbstractCellEditor implements PropertyV
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			TextPropertyDialog dialog = new TextPropertyDialog(type, text, operator);
 			dialog.setVisible(true);
 			if (dialog.isOk()) {
@@ -111,5 +111,10 @@ public class TextValueCellEditor extends AbstractCellEditor implements PropertyV
 	@Override
 	public boolean rendersLabel() {
 		return false;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 }

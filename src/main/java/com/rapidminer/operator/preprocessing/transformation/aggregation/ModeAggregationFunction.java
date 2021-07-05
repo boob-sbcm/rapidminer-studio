@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -57,16 +57,15 @@ public class ModeAggregationFunction extends AggregationFunction {
 
 	@Override
 	public boolean isCompatible() {
-		return getSourceAttribute().isNominal() || getSourceAttribute().isNumerical(); // Both must
-																						// be
-																						// supported
-																						// for
-																						// backward
-																						// compatibility
+		// Both must be supported for backward compatibility
+		return getSourceAttribute().isNominal() || getSourceAttribute().isNumerical();
 	}
 
 	@Override
 	public Aggregator createAggregator() {
-		return new ModeAggregator(this);
+		if (getSourceAttribute().isNumerical()) {
+			return new ModeAggregator(this);
+		}
+		return new NewModeAggregator(this);
 	}
 }

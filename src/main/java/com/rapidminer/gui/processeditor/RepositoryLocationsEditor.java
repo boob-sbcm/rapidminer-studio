@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -184,11 +184,7 @@ class RepositoryLocationsEditor<T extends Ports<?>> extends JPanel {
 					if (rowIndex < ports.getNumberOfPorts()) {
 						Port correspondingPort = ports.getPortByIndex(rowIndex);
 						if (correspondingPort.isConnected()) {
-							if (correspondingPort instanceof OutputPort) {
-								return value + " (" + ((OutputPort) correspondingPort).getDestination() + ")";
-							} else {
-								return value + " (" + ((InputPort) correspondingPort).getSource() + ")";
-							}
+							return value + " (" + correspondingPort.getOpposite() + ")";
 						} else {
 							return value + " (disconnected)";
 						}
@@ -295,7 +291,7 @@ class RepositoryLocationsEditor<T extends Ports<?>> extends JPanel {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				model.add();
 			}
 		}, ViewToolBar.RIGHT);
@@ -304,7 +300,7 @@ class RepositoryLocationsEditor<T extends Ports<?>> extends JPanel {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				int[] selected = table.getSelectedRows();
 				for (int i = selected.length - 1; i >= 0; i--) {
 					model.remove(selected[i]);

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -89,7 +89,8 @@ public class ExpressionException extends Exception {
 	 * @return the first sentence of the error message
 	 */
 	public String getShortMessage() {
-		return super.getMessage().split("\n")[0];
+		String message = super.getMessage();
+		return message == null ? null : message.split("\n")[0];
 	}
 
 }

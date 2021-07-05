@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,6 +19,7 @@
 package com.rapidminer.example.set;
 
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.logging.Level;
 
 import com.rapidminer.tools.LogService;
@@ -315,6 +316,13 @@ public class Partition implements Cloneable, Serializable {
 	@Override
 	public Object clone() {
 		return new Partition(this);
+	}
+
+	/**
+	 * @return a copy of the table index map
+	 */
+	int[] getTableIndexMapCopy() {
+		return Arrays.copyOf(tableIndexMap, tableIndexMap.length);
 	}
 
 	/**

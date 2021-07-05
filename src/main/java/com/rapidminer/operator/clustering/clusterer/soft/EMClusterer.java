@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -27,30 +27,32 @@ import java.util.Vector;
 import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
+import com.rapidminer.example.Statistics;
 import com.rapidminer.example.Tools;
 import com.rapidminer.example.table.AttributeFactory;
-import com.rapidminer.operator.OperatorCapability;
 import com.rapidminer.operator.OperatorCreationException;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
+import com.rapidminer.operator.OperatorVersion;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.clustering.ClusterModel;
 import com.rapidminer.operator.clustering.FlatFuzzyClusterModel;
 import com.rapidminer.operator.clustering.clusterer.KMeans;
 import com.rapidminer.operator.clustering.clusterer.RMAbstractClusterer;
-import com.rapidminer.operator.learner.CapabilityProvider;
 import com.rapidminer.operator.ports.metadata.AttributeMetaData;
-import com.rapidminer.operator.ports.metadata.CapabilityPrecondition;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeBoolean;
 import com.rapidminer.parameter.ParameterTypeCategory;
 import com.rapidminer.parameter.ParameterTypeDouble;
 import com.rapidminer.parameter.ParameterTypeInt;
 import com.rapidminer.parameter.UndefinedParameterError;
+import com.rapidminer.parameter.conditions.AboveOperatorVersionCondition;
+import com.rapidminer.parameter.conditions.EqualTypeCondition;
 import com.rapidminer.tools.Ontology;
 import com.rapidminer.tools.OperatorService;
 import com.rapidminer.tools.RandomGenerator;
 import com.rapidminer.tools.math.VectorMath;
+import com.rapidminer.tools.math.similarity.DistanceMeasures;
 
 import Jama.Matrix;
 
@@ -61,6 +63,8 @@ import Jama.Matrix;
  * @author Regina Fritsch
  */
 public class EMClusterer extends RMAbstractClusterer {
+
+	private static final OperatorVersion BEFORE_MEASURE_PARAM = new OperatorVersion(7, 5, 3);
 
 	/** The parameter name for &quot;the maximal number of clusters&quot; */
 	public static final String PARAMETER_K = "k";
@@ -95,32 +99,20 @@ public class EMClusterer extends RMAbstractClusterer {
 	/** The parameter name for &quot;List of the different init distributions&quot; */
 	public static final String[] INIT_DISTRIBUTION = { "randomly assigned examples", "k-means run", "average parameters" };
 
-	/** The parameter name for &quot;Init distributions randomly assigned&quot; */
+	/** The parameter value for &quot;Init distributions randomly assigned&quot; */
 	public static final int RANDOMLY_ASSIGNED = 0;
 
-	/** The parameter name for &quot;Init distributions hard clustering&quot; */
+	/** The parameter value for &quot;Init distributions hard clustering&quot; */
 	public static final int K_MEANS = 1;
 
-	/** The parameter name for &quot;Init distributions average parameters&quot; */
+	/** The parameter value for &quot;Init distributions average parameters&quot; */
 	public static final int AVERAGE_PARAMETERS = 2;
 
 	/** The parameter name for &quot;Indicates if the example set has correlated attributes&quot; */
 	public static final String PARAMETER_CORRELATED = "correlated_attributes";
 
-	private CapabilityProvider capabilityProvider = new CapabilityProvider() {
-
-		@Override
-		public boolean supportsCapability(OperatorCapability capability) {
-			if (OperatorCapability.MISSING_VALUES.equals(capability)) {
-				return false;
-			}
-			return true;
-		}
-	};
-
 	public EMClusterer(OperatorDescription description) {
 		super(description);
-		getExampleSetInputPort().addPrecondition(new CapabilityPrecondition(capabilityProvider, getExampleSetInputPort()));
 	}
 
 	@Override
@@ -144,10 +136,11 @@ public class EMClusterer extends RMAbstractClusterer {
 	public ClusterModel createClusterModel(ExampleSet exampleSet) throws OperatorException {
 		FlatFuzzyClusterModel bestModel = null;
 
-		int restoreMaxRuns = getParameterAsInt(PARAMETER_MAX_RUNS);
-		boolean restoreCorrelated = getParameterAsBoolean(PARAMETER_CORRELATED);
+		int initialMaxRuns = getParameterAsInt(PARAMETER_MAX_RUNS);
+		int maxRuns = initialMaxRuns;
+
 		boolean isCorrelated = getParameterAsBoolean(PARAMETER_CORRELATED);
-		boolean addAsLabel = getParameterAsBoolean(RMAbstractClusterer.PARAMETER_ADD_AS_LABEL);
+		boolean addAsLabel = addsLabelAttribute();
 		boolean removeUnlabeled = getParameterAsBoolean(RMAbstractClusterer.PARAMETER_REMOVE_UNLABELED);
 		double quality = getParameterAsDouble(PARAMETER_QUALITY);
 		int k = getParameterAsInt(PARAMETER_K);
@@ -155,33 +148,38 @@ public class EMClusterer extends RMAbstractClusterer {
 		// init operator progress
 		int maxOptiRuns = getParameterAsInt(PARAMETER_MAX_OPTIMIZATION_STEPS);
 		getProgress().setTotal(100);
+		int progressOffset = 0;
 
 		int initSpecialSize = exampleSet.getAttributes().specialSize();
 		double[][] exampleInClusterProbability = new double[exampleSet.size()][k];
 
+		boolean showProbs = getParameterAsBoolean(PARAMETER_SHOW_PROBABILITIES);
+
 		double max = Double.NEGATIVE_INFINITY;
 		int exceptionCounter = 0;
 
+		int[] bestAssignments = null;
+
+		RandomGenerator randomGenerator = RandomGenerator.getGlobalRandomGenerator();
+
 		// the iterations
-		for (int iter = 0; iter < restoreMaxRuns; iter++) {
+		for (int iter = 0; iter < maxRuns; iter++) {
 			FlatFuzzyClusterModel result = new FlatFuzzyClusterModel(exampleSet, k, addAsLabel, removeUnlabeled);
 			FlatFuzzyClusterModel oldResult = null;
 			// initialize the model
 			try {
-				init(exampleSet, result, k, initSpecialSize, exampleInClusterProbability);
+				init(exampleSet, result, k, initSpecialSize, exampleInClusterProbability, showProbs, isCorrelated);
 			} catch (OperatorCreationException e1) {
 				e1.printStackTrace();
 			}
 			boolean stableState = false;
-			double logLikelyHood_old = Double.POSITIVE_INFINITY;
-			double logLikelyHood = 0;
+			double logLikelihoodOld = Double.POSITIVE_INFINITY;
+			double logLikelihood = 0;
 			// the optimization-steps
-			int optiStep = 0;
 			int[] clusterAssignments = new int[exampleSet.size()];
 			try {
-				for (optiStep = 0; optiStep < maxOptiRuns && !stableState; optiStep++) {
-					getProgress().setCompleted(
-							(int) (100.0 * iter / restoreMaxRuns + 100.0 / restoreMaxRuns * optiStep / maxOptiRuns));
+				for (int optiStep = 0; optiStep < maxOptiRuns && !stableState; optiStep++) {
+					getProgress().setCompleted(progressOffset + 100 * (iter * maxOptiRuns + optiStep) / maxRuns / maxOptiRuns);
 					stableState = true;
 					oldResult = result;
 					result = new FlatFuzzyClusterModel(exampleSet, k, addAsLabel, removeUnlabeled);
@@ -196,57 +194,67 @@ public class EMClusterer extends RMAbstractClusterer {
 					for (int exampleIndex = 0; exampleIndex < exampleSet.size(); exampleIndex++) {
 						int bestIndex = bestIndex(exampleIndex, k, exampleInClusterProbability);
 						if (bestIndex < 0) {
-							bestIndex = RandomGenerator.getGlobalRandomGenerator().nextInt(result.getNumberOfClusters());
+							bestIndex = randomGenerator.nextInt(result.getNumberOfClusters());
 						}
 						clusterAssignments[exampleIndex] = bestIndex;
 					}
 					result.setClusterAssignments(clusterAssignments, exampleSet);
 					// Recalculate the values: cluster probabilities, means and standard deviations
-					maximization(exampleSet, k, exampleInClusterProbability, result);
+					maximization(exampleSet, k, exampleInClusterProbability, result, isCorrelated);
 					// test if the quality of the soft-clustering performs the user-defined quality
-					logLikelyHood = computeLogLikelyhood(k, exampleInClusterProbability, result);
-					double difference = logLikelyHood_old - logLikelyHood;
-					if (!(Math.abs(difference) < quality)) {
+					logLikelihood = computeLogLikelihood(k, exampleInClusterProbability, result);
+					double difference = logLikelihoodOld - logLikelihood;
+					if (Math.abs(difference) >= quality) {
 						stableState = false;
 					}
-					logLikelyHood_old = logLikelyHood;
+					logLikelihoodOld = logLikelihood;
 				}
 			} catch (OperatorException e) {
 				throw e;
 			} catch (Exception e) {
 				exceptionCounter++;
 				// If there occurs an exception, don't stop at the first time and if there are some
-				// useable models don't discard them.
-				if (exceptionCounter > restoreMaxRuns) {
+				// usable models don't discard them.
+				if (exceptionCounter > initialMaxRuns) {
 					// if there are not enough models, start again without the option correlated
-					if (iter - (exceptionCounter - 1) < Math.round(restoreMaxRuns * 0.49)) {
-						getLogger().info(
-								"Can't compute the inverse of the covariance matrix. Maybe the Matrix is singular. Changing option \"correlated_attributes\" to false.");
-						setParameter(PARAMETER_CORRELATED, "" + false);
-						setParameter(PARAMETER_MAX_RUNS, "" + restoreMaxRuns);
-						bestModel = (FlatFuzzyClusterModel) createClusterModel(exampleSet);
+					if (iter - (exceptionCounter - 1) < Math.round(maxRuns * 0.49) && isCorrelated) {
+						getLogger().info("Can't compute the inverse of the covariance matrix. Maybe the Matrix is singular. Changing option \"correlated_attributes\" to false.");
+						// reset maxRuns and iter, start again with no correlation
+						exceptionCounter = 0;
+						isCorrelated = false;
+						maxRuns = initialMaxRuns;
+						iter = -1;
+						getProgress().setTotal(200);
+						getProgress().setCompleted(100);
+						progressOffset = 100;
+						continue;
 					}
 					break;
-				} else {
-					setParameter(PARAMETER_MAX_RUNS, "" + (getParameterAsInt(PARAMETER_MAX_RUNS) + 1));
-					continue;
 				}
+				// allow one more run
+				maxRuns++;
+				continue;
 			}
 			// check if the model of the current iteration is better than the models computed before
-			if (Math.abs(logLikelyHood) > max) {
-				max = Math.abs(logLikelyHood);
+			if (Math.abs(logLikelihood) > max) {
+				max = Math.abs(logLikelihood);
 				bestModel = result;
-				if (showProbs() == true) {
+				bestAssignments = clusterAssignments;
+				if (showProbs) {
 					setProbabilitiesInTable(exampleSet, exampleInClusterProbability);
 					bestModel.setExampleInClusterProbability(exampleInClusterProbability);
 				}
 			}
-			getProgress().setCompleted((int) (100.0 * (iter + 1) / restoreMaxRuns));
+			getProgress().setCompleted(progressOffset + (int) (100.0 * (iter + 1) / maxRuns));
 		}
 
-		// restore original values
-		setParameter(PARAMETER_MAX_RUNS, "" + restoreMaxRuns);
-		setParameter(PARAMETER_CORRELATED, "" + restoreCorrelated);
+		if (bestModel == null) {
+			throw new UserError(this, "no_cluster_model_calculated");
+		}
+
+		if (addsClusterAttribute()) {
+			addClusterAssignments(exampleSet, bestAssignments);
+		}
 
 		return bestModel;
 	}
@@ -259,7 +267,7 @@ public class EMClusterer extends RMAbstractClusterer {
 	 * Main init method.
 	 */
 	private void init(ExampleSet exampleSet, FlatFuzzyClusterModel result, int k, int initSpecialSize,
-			double[][] exampleInClusterProbability) throws OperatorException, OperatorCreationException {
+					  double[][] exampleInClusterProbability, boolean showProbs, boolean correlated) throws OperatorException, OperatorCreationException {
 
 		// init means, standard deviations (or covariance matrix) and cluster probabilities
 		// according to specified distribution
@@ -302,7 +310,7 @@ public class EMClusterer extends RMAbstractClusterer {
 				}
 				// compute means (normalized), stdDev...)
 				computeValuesWithClusterMemberships(exampleSet, k, exampleInClusterProbability, result);
-				if (isCorrelated()) {
+				if (correlated) {
 					initCovarianceMatrix(exampleSet, exampleInClusterProbability, result, k);
 				}
 				break;
@@ -312,6 +320,14 @@ public class EMClusterer extends RMAbstractClusterer {
 				ExampleSet clusterSet = (ExampleSet) exampleSet.clone();
 				clusterAlgorithm.setParameter(KMeans.PARAMETER_K, "" + k);
 				clusterAlgorithm.setParameter(RMAbstractClusterer.PARAMETER_ADD_CLUSTER_ATTRIBUTE, "true");
+				
+				if (getParameterAsBoolean(RandomGenerator.PARAMETER_USE_LOCAL_RANDOM_SEED)) {
+					clusterAlgorithm.setParameter(RandomGenerator.PARAMETER_USE_LOCAL_RANDOM_SEED, Boolean.toString(true));
+					clusterAlgorithm.setParameter(RandomGenerator.PARAMETER_LOCAL_RANDOM_SEED,
+							getParameter(RandomGenerator.PARAMETER_LOCAL_RANDOM_SEED));
+				}
+
+				clusterAlgorithm.setPresetMeasure(DistanceMeasures.createMeasure(this));
 				clusterAlgorithm.generateClusterModel(clusterSet); // ad a side effect, add cluster
 				// attribute to clusterSet
 
@@ -334,19 +350,19 @@ public class EMClusterer extends RMAbstractClusterer {
 				}
 				// compute means (normalized), stdDev...)
 				computeValuesWithClusterMemberships(exampleSet, k, exampleInClusterProbability, result);
-				if (isCorrelated()) {
+				if (correlated) {
 					initCovarianceMatrix(exampleSet, exampleInClusterProbability, result, k);
 				}
 				break;
 			case AVERAGE_PARAMETERS:
 			default:
 				Random random = RandomGenerator.getRandomGenerator(this);
-				initAverageParameters(exampleSet, k, exampleInClusterProbability, result, random);
+				initAverageParameters(exampleSet, k, exampleInClusterProbability, result, random, correlated);
 				break;
 		}
 
 		// show probabilities in example table?
-		if (showProbs()) {
+		if (showProbs) {
 			if (exampleSet.getAttributes().specialSize() == initSpecialSize) {
 				for (int i = 0; i < k; i++) {
 					String name = "cluster_" + i + "_probability";
@@ -419,35 +435,18 @@ public class EMClusterer extends RMAbstractClusterer {
 	 * this values over the exampleSet.
 	 */
 	private void initAverageParameters(ExampleSet exampleSet, int k, double[][] exampleInClusterProbability,
-			FlatFuzzyClusterModel result, Random random) {
+									   FlatFuzzyClusterModel result, Random random, boolean correlated) {
 		// various initializations
 		double[] max = new double[exampleSet.getAttributes().size()];
-		double[] min = new double[exampleSet.getAttributes().size()];
-		double[] average = new double[exampleSet.getAttributes().size()];
-		for (int j = 0; j < min.length; j++) {
-			min[j] = Double.POSITIVE_INFINITY;
-		}
-
-		// compute average, minimum and maximum values of the attributes
-		Attribute[] regularAttributes = exampleSet.getAttributes().createRegularAttributeArray();
+		double[] min = new double[max.length];
+		double[] average = new double[max.length];
+		exampleSet.recalculateAllAttributeStatistics();
 		int i = 0;
-		for (Example ex : exampleSet) {
-			int j = 0;
-			for (Attribute attribute : regularAttributes) {
-				double value = ex.getValue(attribute);
-				average[j] += value;
-				if (value < min[j]) {
-					min[j] = value;
-				} else if (value > max[j]) {
-					max[j] = value;
-				}
-				j++;
-			}
+		for (Attribute attribute : exampleSet.getAttributes()) {
+			max[i] = exampleSet.getStatistics(attribute, Statistics.MAXIMUM);
+			min[i] = exampleSet.getStatistics(attribute, Statistics.MINIMUM);
+			average[i] = exampleSet.getStatistics(attribute, Statistics.AVERAGE);
 			i++;
-		}
-
-		for (int j = 0; j < average.length; j++) {
-			average[j] = average[j] / exampleSet.size();
 		}
 
 		// make it random (to get different initializations for the different iterations)
@@ -465,7 +464,7 @@ public class EMClusterer extends RMAbstractClusterer {
 
 		int j = 0;
 		for (i = 0; i < k; i++) {
-			double[] clusterMean = new double[exampleSet.getAttributes().size()];
+			double[] clusterMean;
 			double clusterStDeviation;
 			double clusterProbability;
 			if (i < k / 2) {
@@ -492,7 +491,7 @@ public class EMClusterer extends RMAbstractClusterer {
 			result.setClusterProbability(i, clusterProbability);
 		}
 
-		if (isCorrelated()) {
+		if (correlated) {
 			initCovarianceMatrix(exampleSet, exampleInClusterProbability, result, k);
 		}
 
@@ -620,8 +619,7 @@ public class EMClusterer extends RMAbstractClusterer {
 	 * AND - cluster standard deviation [sigma_i] OR - cluster covariance matrix [Sigma_i] with the
 	 * probabilities of each example to each cluster [P(Cluster_i|example)]
 	 */
-	protected void maximization(ExampleSet exampleSet, int k, double[][] exampleInClusterProbability,
-			FlatFuzzyClusterModel result) {
+	protected void maximization(ExampleSet exampleSet, int k, double[][] exampleInClusterProbability, FlatFuzzyClusterModel result, boolean correlated) {
 		for (int i = 0; i < k; i++) {
 			double probabilitySum = 0;
 			int j = 0;
@@ -635,7 +633,7 @@ public class EMClusterer extends RMAbstractClusterer {
 			result.setClusterMean(i, VectorMath.vectorDivision(clusterMean, probabilitySum));
 			result.setClusterProbability(i, probabilitySum / exampleSet.size());
 
-			if (!isCorrelated()) {
+			if (!correlated) {
 				j = 0;
 				double clusterStDeviation = 0;
 				for (Example example : exampleSet) {
@@ -647,7 +645,7 @@ public class EMClusterer extends RMAbstractClusterer {
 				result.setClusterStandardDeviation(i, clusterStDeviation / probabilitySum);
 			}
 		}
-		if (isCorrelated()) {
+		if (correlated) {
 			computeCovarianceMatrix(exampleSet, exampleInClusterProbability, result, k);
 		}
 	}
@@ -685,9 +683,9 @@ public class EMClusterer extends RMAbstractClusterer {
 	}
 
 	/*
-	 * Computes the loglikelyhood.
+	 * Computes the loglikelihood.
 	 */
-	protected double computeLogLikelyhood(int k, double[][] exampleInClusterProbability, FlatFuzzyClusterModel resultModel) {
+	protected double computeLogLikelihood(int k, double[][] exampleInClusterProbability, FlatFuzzyClusterModel resultModel) {
 		double result = 0;
 		double temp = 0;
 		for (int n = 0; n < exampleInClusterProbability.length; n++) {
@@ -700,31 +698,10 @@ public class EMClusterer extends RMAbstractClusterer {
 	}
 
 	/*
-	 * Show cluster probabilities in table?
-	 */
-	private boolean showProbs() {
-		if (getParameterAsBoolean(PARAMETER_SHOW_PROBABILITIES) == true) {
-			return true;
-		}
-		return false;
-	}
-
-	/*
-	 * Are there correlated attributes in the example set?
-	 */
-	private boolean isCorrelated() {
-		if (!getParameterAsBoolean(PARAMETER_CORRELATED)) {
-			return false;
-		}
-		return true;
-	}
-
-	/*
 	 * Sets the cluster probabilities in the table, according to the actual values in
 	 * exampleClusterProbs.
 	 */
-	private void setProbabilitiesInTable(ExampleSet exampleSet, double[][] exampleInClusterProbability)
-			throws OperatorException {
+	private void setProbabilitiesInTable(ExampleSet exampleSet, double[][] exampleInClusterProbability) throws OperatorException {
 		int k = getParameterAsInt(PARAMETER_K);
 		for (int i = 0; i < k; i++) {
 			String name = "cluster_" + i + "_probability";
@@ -750,7 +727,7 @@ public class EMClusterer extends RMAbstractClusterer {
 	}
 
 	@Override
-	public ClusterModel generateClusterModel(ExampleSet exampleSet) throws OperatorException {
+	protected ClusterModel generateInternalClusterModel(ExampleSet exampleSet) throws OperatorException {
 		// get parameters
 		int k = getParameterAsInt(PARAMETER_K);
 
@@ -764,24 +741,13 @@ public class EMClusterer extends RMAbstractClusterer {
 			throw new UserError(this, 142, k);
 		}
 
-		ClusterModel model = createClusterModel(exampleSet);
-		Attribute idAttribute = exampleSet.getAttributes().getId();
-		if (addsClusterAttribute()) {
-			Attribute cluster = AttributeFactory.createAttribute("cluster", Ontology.NOMINAL);
-			exampleSet.getExampleTable().addAttribute(cluster);
-			exampleSet.getAttributes().setCluster(cluster);
-			if (idAttribute.isNumerical()) {
-				for (Example example : exampleSet) {
-					example.setValue(cluster, "cluster_" + model.getClusterIndexOfId(example.getValue(idAttribute)));
-				}
-			} else {
-				for (Example example : exampleSet) {
-					example.setValue(cluster, "cluster_" + model.getClusterIndexOfId(example.getValueAsString(idAttribute)));
-				}
-			}
-		}
+		return createClusterModel(exampleSet);
 
-		return model;
+	}
+
+	@Override
+	protected boolean handlesInfiniteValues() {
+		return false;
 	}
 
 	@Override
@@ -802,7 +768,7 @@ public class EMClusterer extends RMAbstractClusterer {
 				"The maximal number of iterations performed for one run of this operator.", 1, Integer.MAX_VALUE, 100,
 				false));
 		types.add(new ParameterTypeDouble(PARAMETER_QUALITY,
-				"The quality that must be fullfilled before the algorithm stops. (The rising of the loglikelyhood that must be undercut)",
+				"The quality that must be fullfilled before the algorithm stops. (The rising of the loglikelihood that must be undercut)",
 				1.0E-15, 1.0E-1, 1.0E-10));
 
 		types.addAll(RandomGenerator.getRandomGeneratorParameters(this));
@@ -811,9 +777,34 @@ public class EMClusterer extends RMAbstractClusterer {
 				"Insert probabilities for every cluster with every example in the example set.", true));
 		types.add(new ParameterTypeCategory(PARAMETER_INITIALIZATION_DISTRIBUTION,
 				"Indicates the inital distribution of the centroids.", INIT_DISTRIBUTION, K_MEANS));
+		addDistMeasureParams(types);
 		types.add(new ParameterTypeBoolean(PARAMETER_CORRELATED,
 				"Has to be activated, if the example set contains correlated attributes.", true));
 
 		return types;
 	}
+
+	private void addDistMeasureParams(List<ParameterType> types) {
+		List<ParameterType> measureParams = DistanceMeasures.getParameterTypesForNumAndDiv(this);
+		ParameterType param = measureParams.get(0);
+		param.registerDependencyCondition(new AboveOperatorVersionCondition(this, BEFORE_MEASURE_PARAM));
+		param.setDefaultValue(DistanceMeasures.DIVERGENCES_TYPE - DistanceMeasures.NUMERICAL_MEASURES_TYPE);
+		param.registerDependencyCondition(
+				new EqualTypeCondition(this, PARAMETER_INITIALIZATION_DISTRIBUTION, INIT_DISTRIBUTION, false, K_MEANS));
+		measureParams.get(2).setDefaultValue(6);
+		measureParams.forEach(p -> p.setExpert(true));
+		types.addAll(measureParams);
+	}
+
+	@Override
+	public OperatorVersion[] getIncompatibleVersionChanges() {
+		OperatorVersion[] old = super.getIncompatibleVersionChanges();
+		OperatorVersion[] newVersions = new OperatorVersion[old.length + 1];
+		if (old.length != 0) {
+			System.arraycopy(old, 0, newVersions, 0, old.length);
+		}
+		newVersions[old.length] = BEFORE_MEASURE_PARAM;
+		return newVersions;
+	}
+
 }

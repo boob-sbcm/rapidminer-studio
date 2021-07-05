@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -171,8 +171,9 @@ public final class ExpressionParserUtils {
 			// attribute name. After the new attribute is build, it's name is set the 'targetName'
 			// at the end of this method.
 			//
+			RandomGenerator randomGenerator = RandomGenerator.getGlobalRandomGenerator();
 			do {
-				appendix.append(RandomGenerator.getGlobalRandomGenerator().nextString(5));
+				appendix.append(randomGenerator.nextString(5));
 			} while (exampleSet.getAttributes().get(name + appendix.toString()) != null);
 			name = name + appendix.toString();
 		}

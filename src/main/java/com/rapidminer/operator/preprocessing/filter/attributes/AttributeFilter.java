@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,10 @@
 */
 package com.rapidminer.operator.preprocessing.filter.attributes;
 
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
 import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Attributes;
 import com.rapidminer.example.ExampleSet;
@@ -31,10 +35,7 @@ import com.rapidminer.operator.ports.metadata.MetaData;
 import com.rapidminer.operator.tools.AttributeSubsetSelector;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.tools.OperatorResourceConsumptionHandler;
-
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
+import com.rapidminer.tools.ProcessTools;
 
 
 /**
@@ -101,7 +102,7 @@ public class AttributeFilter extends AbstractFeatureSelection {
 	@Override
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
-		types.addAll(attributeSelector.getParameterTypes());
+		types.addAll(ProcessTools.setSubsetSelectorPrimaryParameter(attributeSelector.getParameterTypes(), true));
 		return types;
 	}
 

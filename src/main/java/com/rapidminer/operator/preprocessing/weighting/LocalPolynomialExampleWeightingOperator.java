@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -123,7 +123,7 @@ public class LocalPolynomialExampleWeightingOperator extends Operator {
 
 	public ExampleSet doWork(ExampleSet exampleSet, ParameterHandler handler) throws OperatorException {
 		DistanceMeasure measure = DistanceMeasures.createMeasure(handler);
-		measure.init(exampleSet);
+		measure.init(exampleSet, this);
 
 		Attributes attributes = exampleSet.getAttributes();
 		Attribute label = attributes.getLabel();

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -23,6 +23,7 @@ import static com.rapidminer.tools.ParameterService.RAPIDMINER_CONFIG_FILE_NAME;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.UUID;
 import java.util.logging.Level;
 
 
@@ -33,13 +34,39 @@ import java.util.logging.Level;
  * @author Sebastian Land
  */
 public class FileSystemService {
-
+	/** named like the jxVersion gradle variable to make it easier to find whenever JxBrowser version is bumped */
+	private static final String jxVersion = "7.7";
 	/** folder in which extensions have their workspace */
 	private static final String RAPIDMINER_EXTENSIONS_FOLDER = "extensions";
 	/** folder in which extensions get their own folder to work with files */
-	private static final String RAPIDMINER_EXTENSIONS_WORKSPACE_FOLDER = "workspace";
+	public static final String RAPIDMINER_EXTENSIONS_WORKSPACE_FOLDER = "workspace";
 	/** folder which can be used to share data between extensions */
 	private static final String RAPIDMINER_SHARED_DATA = "shared data";
+	/** folder which can be used for internal caching */
+	private static final String RAPIDMINER_INTERNAL_CACHE = "internal cache";
+	/** {@link #RAPIDMINER_INTERNAL_CACHE} subfolder which can be used for internal caching of the Global Search feature */
+	private static final String RAPIDMINER_INTERNAL_CACHE_SEARCH = "search";
+	/** {@link #RAPIDMINER_INTERNAL_CACHE_SEARCH} subfolder which can be used for internal caching of the Global Search feature */
+	private static final String RAPIDMINER_INTERNAL_CACHE_SEARCH_INSTANCE = "instance_" + UUID.randomUUID();
+	/** {@link #RAPIDMINER_INTERNAL_CACHE} subfolder which is used for the connection file cache */
+	private static final String RAPIDMINER_INTERNAL_CACHE_CONNECTION = "connectionFiles";
+	/** {@link #RAPIDMINER_INTERNAL_CACHE} subfolder which is used by BrowserContext for cache data storage. Browser cache depends on platform, if you mix DLLs for Win32 and Win64, you get an endless loop */
+	private static final String RAPIDMINER_INTERNAL_CACHE_BROWSER = "browser" + jxVersion + (PlatformUtilities.getReleasePlatform() != null ? "-" + PlatformUtilities.getReleasePlatform().name() : "");
+
+	/** {@link #RAPIDMINER_INTERNAL_CACHE} subfolder which can be used for internal caching of the content mapper store */
+	private static final String RAPIDMINER_INTERNAL_CACHE_CONTENT_MAPPER_STORE = "content mapper";
+	/** {@link #RAPIDMINER_INTERNAL_CACHE} subfolder which can be used as an internal fallback temp folder */
+	private static final String RAPIDMINER_INTERNAL_CACHE_TEMP = "temp";
+
+	public static final String RAPIDMINER_INTERNAL_CACHE_CONNECTION_FULL = RAPIDMINER_INTERNAL_CACHE + "/" + RAPIDMINER_INTERNAL_CACHE_CONNECTION;
+	public static final String RAPIDMINER_INTERNAL_CACHE_SEARCH_FULL = RAPIDMINER_INTERNAL_CACHE + "/" + RAPIDMINER_INTERNAL_CACHE_SEARCH;
+	/** This folder only exists after the {@link com.rapidminer.search.GlobalSearchIndexer Global Search} is initialized. */
+	public static final String RAPIDMINER_INTERNAL_CACHE_SEARCH_INSTANCE_FULL = RAPIDMINER_INTERNAL_CACHE_SEARCH_FULL + "/" + RAPIDMINER_INTERNAL_CACHE_SEARCH_INSTANCE;
+	public static final String RAPIDMINER_INTERNAL_CACHE_CONTENT_MAPPER_STORE_FULL = RAPIDMINER_INTERNAL_CACHE + "/" + RAPIDMINER_INTERNAL_CACHE_CONTENT_MAPPER_STORE;
+	public static final String RAPIDMINER_INTERNAL_CACHE_BROWSER_FULL = RAPIDMINER_INTERNAL_CACHE + "/" + RAPIDMINER_INTERNAL_CACHE_BROWSER;
+	public static final String RAPIDMINER_INTERNAL_CACHE_TEMP_FULL = RAPIDMINER_INTERNAL_CACHE + "/" + RAPIDMINER_INTERNAL_CACHE_TEMP;
+	/** the folder where the {@link com.rapidminer.tools.encryption.EncryptionProviderRegistry} stores the encryption keys */
+	public static final String RAPIDMINER_ENCRYPTION_FOLDER = "encryption";
 
 	/** folder which can be used to load additional building blocks */
 	public static final String RAPIDMINER_BUILDINGBLOCKS = "buildingblocks";
@@ -70,59 +97,38 @@ public class FileSystemService {
 	}
 
 	public static File getUserRapidMinerDir() {
-		File homeDir = new File(System.getProperty("user.home"));
-		File userHomeDir = new File(homeDir, RAPIDMINER_USER_FOLDER);
-		File extensionsWorkspaceRootFolder = new File(userHomeDir, RAPIDMINER_EXTENSIONS_FOLDER);
-		File extensionsWorkspaceFolder = new File(extensionsWorkspaceRootFolder, RAPIDMINER_EXTENSIONS_WORKSPACE_FOLDER);
-		File sharedDataDir = new File(userHomeDir, RAPIDMINER_SHARED_DATA);
-		File buildingBlocksFolder = new File(userHomeDir, RAPIDMINER_BUILDINGBLOCKS);
+		File rapidMinerDir;
+		String customHome = System.getProperty("rapidminer.user-home");
+		if (customHome != null && !customHome.trim().isEmpty()) {
+			rapidMinerDir = new File(customHome);
+		} else {
+			File homeDir = new File(System.getProperty("user.home"));
+			rapidMinerDir = new File(homeDir, RAPIDMINER_USER_FOLDER);
+		}
 
-		if (!userHomeDir.exists()) {
-			LogService.getRoot().log(Level.CONFIG, "com.rapidminer.tools.FileSystemService.creating_directory", userHomeDir);
-			boolean result = userHomeDir.mkdir();
-			if (!result) {
-				LogService.getRoot().log(Level.WARNING,
-						"com.rapidminer.tools.FileSystemService.creating_home_directory_error", userHomeDir);
-			}
-		}
-		if (!extensionsWorkspaceRootFolder.exists()) {
-			LogService.getRoot().log(Level.CONFIG, "com.rapidminer.tools.FileSystemService.creating_directory",
-					extensionsWorkspaceRootFolder);
-			boolean result = extensionsWorkspaceRootFolder.mkdir();
-			if (!result) {
-				LogService.getRoot().log(Level.WARNING,
-						"com.rapidminer.tools.FileSystemService.creating_home_directory_error",
-						extensionsWorkspaceRootFolder);
-			}
-		}
-		if (!extensionsWorkspaceFolder.exists()) {
-			LogService.getRoot().log(Level.CONFIG, "com.rapidminer.tools.FileSystemService.creating_directory",
-					extensionsWorkspaceFolder);
-			boolean result = extensionsWorkspaceFolder.mkdir();
-			if (!result) {
-				LogService.getRoot().log(Level.WARNING,
-						"com.rapidminer.tools.FileSystemService.creating_home_directory_error", extensionsWorkspaceFolder);
-			}
-		}
-		if (!sharedDataDir.exists()) {
-			LogService.getRoot().log(Level.CONFIG, "com.rapidminer.tools.FileSystemService.creating_directory",
-					sharedDataDir);
-			boolean result = sharedDataDir.mkdir();
-			if (!result) {
-				LogService.getRoot().log(Level.WARNING,
-						"com.rapidminer.tools.FileSystemService.creating_home_directory_error", sharedDataDir);
-			}
-		}
-		if (!buildingBlocksFolder.exists()) {
-			LogService.getRoot().log(Level.CONFIG, "com.rapidminer.tools.FileSystemService.creating_directory",
-					buildingBlocksFolder);
-			boolean result = buildingBlocksFolder.mkdir();
-			if (!result) {
-				LogService.getRoot().log(Level.WARNING,
-						"com.rapidminer.tools.FileSystemService.creating_home_directory_error", buildingBlocksFolder);
-			}
-		}
-		return userHomeDir;
+		File extensionsWorkspaceRootFolder = new File(rapidMinerDir, RAPIDMINER_EXTENSIONS_FOLDER);
+		File extensionsWorkspaceFolder = new File(extensionsWorkspaceRootFolder, RAPIDMINER_EXTENSIONS_WORKSPACE_FOLDER);
+		File sharedDataDir = new File(rapidMinerDir, RAPIDMINER_SHARED_DATA);
+		File buildingBlocksFolder = new File(rapidMinerDir, RAPIDMINER_BUILDINGBLOCKS);
+		File internalCacheFolder = new File(rapidMinerDir, RAPIDMINER_INTERNAL_CACHE);
+		File internalCacheSearchFolder = new File(internalCacheFolder, RAPIDMINER_INTERNAL_CACHE_SEARCH);
+		File internalCacheRepositoryMapperStoreFolder = new File(internalCacheFolder, RAPIDMINER_INTERNAL_CACHE_CONTENT_MAPPER_STORE);
+		File internalCacheBrowserFolder = new File(internalCacheFolder, RAPIDMINER_INTERNAL_CACHE_BROWSER);
+		File internalTempFolder = new File(internalCacheFolder, RAPIDMINER_INTERNAL_CACHE_TEMP);
+
+		checkAndCreateFolder(rapidMinerDir);
+		checkAndCreateFolder(extensionsWorkspaceRootFolder);
+		checkAndCreateFolder(internalCacheFolder);
+		checkAndCreateFolder(internalCacheSearchFolder);
+		checkAndCreateFolder(internalCacheRepositoryMapperStoreFolder);
+		checkAndCreateFolder(internalCacheBrowserFolder);
+		checkAndCreateFolder(internalTempFolder);
+
+		checkAndCreateFolder(extensionsWorkspaceFolder);
+		checkAndCreateFolder(sharedDataDir);
+		checkAndCreateFolder(buildingBlocksFolder);
+
+		return rapidMinerDir;
 	}
 
 	/**
@@ -184,6 +190,23 @@ public class FileSystemService {
 			return null;
 		} else {
 			return new File(new File(root, "resources"), name);
+		}
+	}
+
+	/**
+	 * Tries to create the given folder location if it does not yet exist.
+	 *
+	 * @param newFolder
+	 * 		the folder location in question.
+	 */
+	private static void checkAndCreateFolder(File newFolder) {
+		if (!newFolder.exists()) {
+			LogService.getRoot().log(Level.CONFIG, "com.rapidminer.tools.FileSystemService.creating_directory", newFolder);
+			boolean result = newFolder.mkdir();
+			if (!result) {
+				LogService.getRoot().log(Level.WARNING,
+						"com.rapidminer.tools.FileSystemService.creating_home_directory_error", newFolder);
+			}
 		}
 	}
 

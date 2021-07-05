@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -30,6 +30,11 @@ import java.util.Set;
 import org.junit.Assert;
 import org.junit.ComparisonFailure;
 
+import com.rapidminer.belt.column.Column;
+import com.rapidminer.belt.column.Dictionary;
+import com.rapidminer.belt.reader.NumericReader;
+import com.rapidminer.belt.reader.ObjectReader;
+import com.rapidminer.belt.reader.Readers;
 import com.rapidminer.example.Attribute;
 import com.rapidminer.example.AttributeRole;
 import com.rapidminer.example.Attributes;
@@ -504,7 +509,7 @@ public class RapidAssert extends Assert {
 			Attribute expectedSpecial = allExpectedAttributes.get(i);
 			String expectedName = expectedSpecial.getName();
 			String actualName = null;
-			for (int j = 0; i < allActualAttributes.size(); j++) {
+			for (int j = 0; j < allActualAttributes.size(); j++) {
 				Attribute actualSpecial = allActualAttributes.get(j);
 				actualName = actualSpecial.getName();
 				if (expectedName.equals(actualName)) {
@@ -522,7 +527,6 @@ public class RapidAssert extends Assert {
 					allExpectedAttributes.remove(expectedSpecial);
 					allActualAttributes.remove(actualSpecial);
 					i--;
-					j--;
 					break;
 				}
 			}
@@ -564,9 +568,82 @@ public class RapidAssert extends Assert {
 		expectedRoleIt = expected.specialAttributes();
 		while (expectedRoleIt.hasNext()) {
 			AttributeRole expectedRole = expectedRoleIt.next();
-			AttributeRole actualRole = actual.getRole(actual.getSpecial(expectedRole.getSpecialName()));
+			Attribute special = actual.getSpecial(expectedRole.getSpecialName());
+			if (special == null) {
+				assertEquals(message + " (attribute role)", expectedRole.getSpecialName(), null);
+			}
+			AttributeRole actualRole = actual.getRole(special);
 			RapidAssert.assertEquals(message, expectedRole, actualRole, compareDefaultValues);
 		}
+	}
+
+	/**
+	 * Tests if the two columns are equal.
+	 *
+	 * @param message
+	 *            message to display if an error occurs
+	 * @param expected
+	 *            expected value
+	 * @param actual
+	 *            actual value
+	 */
+	public static void assertEquals(String message, String name, Column expected, Column actual) {
+		assertEquals(message + " (column type)", expected.type(), actual.type());
+
+		if (expected.type().category() == Column.Category.CATEGORICAL) {
+			assertEqualsIgnoreOrder(message + " (dictionary of column '" + name + ")",
+					expected.getDictionary(), actual.getDictionary());
+		}
+		if (expected.type().hasCapability(Column.Capability.OBJECT_READABLE)) {
+			ObjectReader<Object> expectedReader = Readers.objectReader(expected, Object.class);
+			ObjectReader<Object> actualReader = Readers.objectReader(actual, Object.class);
+			int row = 0;
+			while (expectedReader.hasRemaining()) {
+				Object expectedObject = expectedReader.read();
+				Object actualObject = actualReader.read();
+				Assert.assertEquals(MessageFormat.format(message + "(row number " + row + ", {0} value of {1})",
+						"objects", name), expectedObject,
+						actualObject);
+				row++;
+			}
+		} else {
+			NumericReader expectedReader = Readers.numericReader(expected);
+			NumericReader actualReader = Readers.numericReader(actual);
+			int row = 0;
+			while (expectedReader.hasRemaining()) {
+				double expectedValue = expectedReader.read();
+				double actualValue = actualReader.read();
+				assertEqualsWithRelativeErrorOrBothNaN(MessageFormat.format(message + "(row number " + row + ", {0} " +
+								"value of {1})", "numerical", name),
+						expectedValue, actualValue);
+				row++;
+			}
+		}
+	}
+
+	/**
+	 * Tests two dictionaries for its size and values.
+	 *
+	 * @param message
+	 * 		message to display if an error occurs
+	 * @param expected
+	 * 		expected value
+	 * @param actual
+	 * 		actual value
+	 */
+	public static void assertEqualsIgnoreOrder(String message, Dictionary expected,
+											   Dictionary actual) {
+		if (expected == actual) {
+			return;
+		}
+		Assert.assertTrue(expected != null && actual != null);
+
+		Assert.assertEquals(message + " (dictionary size)", expected.size(), actual.size());
+
+		// check that we have the same values in both dictionaries:
+		Set<String> expectedValuesSet = expected.createInverse().keySet();
+		Set<String> actualValuesSet = actual.createInverse().keySet();
+		Assert.assertEquals(message + " (different dictionaries)", expectedValuesSet, actualValuesSet);
 	}
 
 	public static void assertEquals(String message, ParameterValue expected, ParameterValue actual) {

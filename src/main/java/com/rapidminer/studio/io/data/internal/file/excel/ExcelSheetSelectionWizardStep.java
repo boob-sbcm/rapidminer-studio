@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,11 +18,11 @@
 */
 package com.rapidminer.studio.io.data.internal.file.excel;
 
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.Map;
 
 import javax.swing.JComponent;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
 
 import com.rapidminer.core.io.data.DataSetException;
 import com.rapidminer.core.io.gui.ImportWizard;
@@ -32,11 +32,12 @@ import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.operator.nio.model.ExcelResultSetConfiguration;
 import com.rapidminer.operator.nio.model.xlsx.XlsxUtilities.XlsxCellCoordinates;
 import com.rapidminer.studio.io.data.HeaderRowNotFoundException;
+import com.rapidminer.studio.io.data.StartRowNotFoundException;
 import com.rapidminer.studio.io.gui.internal.steps.AbstractWizardStep;
 
 
 /**
- * An {@link ImportWizardStep} which allows to select the Excel sheet and cell range to import.
+ * An {@link com.rapidminer.core.io.gui.WizardStep ImportWizardStep} which allows to select the Excel sheet and cell range to import.
  *
  * @author Nils Woehler
  * @since 7.0.0
@@ -58,11 +59,11 @@ final class ExcelSheetSelectionWizardStep extends AbstractWizardStep {
 		this.excelDataSource = excelDataSource;
 		this.wizard = wizard;
 		this.workbookSelectionPanel = new ExcelSheetSelectionPanel(excelDataSource);
-		this.workbookSelectionPanel.addChangeListener(new ChangeListener() {
-
+		this.workbookSelectionPanel.addChangeListener(e -> fireStateChanged());
+		wizard.getDialog().addWindowListener(new WindowAdapter() {
 			@Override
-			public void stateChanged(ChangeEvent e) {
-				fireStateChanged();
+			public void windowClosed(WindowEvent e) {
+				workbookSelectionPanel.tearDown();
 			}
 		});
 	}
@@ -130,8 +131,6 @@ final class ExcelSheetSelectionWizardStep extends AbstractWizardStep {
 	@Override
 	public void viewWillBecomeInvisible(WizardDirection direction) throws InvalidConfigurationException {
 
-		// ensure error bubble has been killed when leaving the step
-		workbookSelectionPanel.killCurrentBubbleWindow(null);
 
 		// only configure meta data in case the user proceeds to the next step
 		if (direction == WizardDirection.NEXT) {
@@ -143,6 +142,7 @@ final class ExcelSheetSelectionWizardStep extends AbstractWizardStep {
 
 			// update the selected sheet
 			configuration.setSheet(workbookSelectionPanel.getSheetIndex());
+			configuration.setSheetSelectionMode(ExcelResultSetConfiguration.SheetSelectionMode.BY_INDEX);
 
 			// update the cell range selection
 			configuration.setColumnOffset(selection.getColumnIndexStart());
@@ -165,6 +165,10 @@ final class ExcelSheetSelectionWizardStep extends AbstractWizardStep {
 					calculateMetaData = true;
 					workbookSelectionPanel.notifyHeaderRowBehindStartRow();
 					throw new InvalidConfigurationException();
+				} catch (StartRowNotFoundException e) {
+					calculateMetaData = true;
+					workbookSelectionPanel.notifyNoRowsLeft();
+					throw new InvalidConfigurationException();
 				} catch (DataSetException e) {
 					calculateMetaData = true;
 					SwingTools.showSimpleErrorMessage(wizard.getDialog(),
@@ -173,7 +177,7 @@ final class ExcelSheetSelectionWizardStep extends AbstractWizardStep {
 				}
 			}
 		}
-
+		workbookSelectionPanel.tearDown();
 	}
 
 	@Override

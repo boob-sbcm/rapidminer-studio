@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,13 +24,15 @@ import javax.crypto.SecretKey;
 
 
 /**
- * The {@link CipherKeyProvider} handles creation, loading and storing of cipher {@link Key}s for
- * the {@link KeyGeneratorTool}.
+ * The {@link CipherKeyProvider} handles creation, loading and storing of cipher {@link Key}s for the {@link
+ * KeyGeneratorTool}.
  *
  * @author Nils Woehler
  * @since 6.2.0
- *
+ * @deprecated since 9.7, use {@link com.rapidminer.tools.encryption.EncryptionProvider} instead for new features
+ * needing encryption!
  */
+@Deprecated
 public interface CipherKeyProvider {
 
 	/**

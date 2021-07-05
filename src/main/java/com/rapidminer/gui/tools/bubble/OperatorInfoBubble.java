@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -240,8 +240,6 @@ public class OperatorInfoBubble extends BubbleWindow {
 				RapidMinerGUI.getMainFrame().getPerspectiveController().showPerspective(PerspectiveModel.DESIGN);
 				this.myPerspective = PerspectiveModel.DESIGN;
 			}
-			// make sure dockable is visible
-			DockingTools.openDockable(ProcessPanel.PROCESS_PANEL_DOCK_KEY, null, RelativeDockablePosition.TOP_CENTER);
 
 			// make sure the operator has a parent (which could be the ProcessRootOperator)
 			// if the operator has no parent, e.g. because it is used internally by another

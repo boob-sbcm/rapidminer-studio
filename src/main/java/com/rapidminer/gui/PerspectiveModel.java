@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -48,6 +48,11 @@ public class PerspectiveModel extends AbstractObservable<List<Perspective>> {
 
 	public static final String RESULT = "result";
 	public static final String DESIGN = "design";
+
+	public static final String TURBO_PREP = "turbo_prep";
+	public static final String MODEL_WIZARD = "model_wizard";
+	public static final String DEPLOYMENTS = "deployments";
+	public static final String HADOOP_DATA = "hadoop_data";
 
 	private final Map<String, Perspective> perspectives = new LinkedHashMap<>();
 
@@ -219,8 +224,11 @@ public class PerspectiveModel extends AbstractObservable<List<Perspective>> {
 	 * Updates the selected perspective and notifies the {@link PerspectiveChangeListener}.
 	 *
 	 * @param name
-	 *            the name of the new selected perspective
+	 * 		the name of the new selected perspective
+	 * @deprecated since 8.2.1; use {@link PerspectiveController#showPerspective(String)} instead,
+	 * as this method is not safe and won't be public in the future
 	 */
+	@Deprecated
 	public void setSelectedPerspective(String name) {
 		if (perspectives.containsKey(name)) {
 			setSelectedPerspective(perspectives.get(name));
@@ -231,8 +239,11 @@ public class PerspectiveModel extends AbstractObservable<List<Perspective>> {
 	 * Updates the selected perspective and notifies the {@link PerspectiveChangeListener}.
 	 *
 	 * @param perspective
-	 *            the new selected perspective
+	 * 		the new selected perspective
+	 * @deprecated since 8.2.1; use {@link PerspectiveController#showPerspective(Perspective)} instead,
+	 * as this method is not safe and won't be public in the future
 	 */
+	@Deprecated
 	public void setSelectedPerspective(Perspective perspective) {
 		if (selectedPerspective == perspective) {
 			return;
@@ -255,7 +266,7 @@ public class PerspectiveModel extends AbstractObservable<List<Perspective>> {
 			return false;
 		}
 		for (Perspective perspective : perspectives.values()) {
-			if (perspective.getName().toLowerCase().equals(name.toLowerCase())) {
+			if (perspective.getName().equalsIgnoreCase(name)) {
 				return false;
 			}
 		}
@@ -268,16 +279,9 @@ public class PerspectiveModel extends AbstractObservable<List<Perspective>> {
 	 */
 	public void notifyChangeListener() {
 		// do not fire these in the EDT
-		new Thread(new Runnable() {
-
-			@Override
-			public void run() {
-				if (perspectiveChangeListenerList != null) {
-					LinkedList<PerspectiveChangeListener> list = new LinkedList<>(perspectiveChangeListenerList);
-					for (PerspectiveChangeListener listener : list) {
-						listener.perspectiveChangedTo(selectedPerspective);
-					}
-				}
+		new Thread(() -> {
+			if (perspectiveChangeListenerList != null) {
+				new LinkedList<>(perspectiveChangeListenerList).forEach(listener -> listener.perspectiveChangedTo(selectedPerspective));
 			}
 		}).start();
 	}

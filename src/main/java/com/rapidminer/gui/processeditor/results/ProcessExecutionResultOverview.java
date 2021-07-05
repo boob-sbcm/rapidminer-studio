@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -33,7 +33,6 @@ import java.text.DateFormat;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
-
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
@@ -80,10 +79,10 @@ public class ProcessExecutionResultOverview extends JPanel {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			try {
 				if (RapidMinerGUI.getMainFrame().close()) {
-					Process process = new Process(ProcessExecutionResultOverview.this.process);
+					Process process = new Process(ProcessExecutionResultOverview.this.process, Process.NO_ENCRYPTION);
 					process.setProcessLocation(processLocation);
 					RapidMinerGUI.getMainFrame().setProcess(process, true);
 				}
@@ -98,7 +97,7 @@ public class ProcessExecutionResultOverview extends JPanel {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			parent.removeProcessOverview(ProcessExecutionResultOverview.this);
 		}
 	};
@@ -128,7 +127,7 @@ public class ProcessExecutionResultOverview extends JPanel {
 	public ProcessExecutionResultOverview(ResultOverview parent, Process process, List<IOObject> results,
 			String statusMessage) {
 		this.parent = parent;
-		this.process = process.getRootOperator().getXML(false);
+		this.process = process.getRootOperator().getXML(false, null);
 		this.processLocation = process.getProcessLocation();
 
 		setOpaque(true);

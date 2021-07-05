@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -30,7 +30,9 @@ import java.util.Vector;
  * necessary information to have a nice GUI integration.
  * 
  * @author Sebastian Land
+ * @deprecated since 9.7, but was unused even before
  */
+@Deprecated
 public class OperatorLibraryDocBundle extends OperatorDocBundle {
 
 	private OperatorLibrary library;

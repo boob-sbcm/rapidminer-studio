@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -20,6 +20,14 @@ package com.rapidminer.tools;
 
 import static org.junit.Assert.assertEquals;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import org.apache.commons.io.FileUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 
@@ -68,4 +76,42 @@ public class ToolsTest {
 		assertEquals("0.001", formatted);
 	}
 
+	@Test
+	public void testExcelColumnNames() {
+		// test error case
+		assertEquals("Negative indices should create \"error\" result.", "error", Tools.getExcelColumnName(-1));
+		// test base case
+		for (int i = 0; i < 26; i++) {
+			assertEquals("Index " + i + " creates wrong output.", "" + (char) ('A' + i), Tools.getExcelColumnName(i));
+		}
+		// edge cases
+		assertEquals("Index 26 creates wrong output", "AA", Tools.getExcelColumnName(26));
+		assertEquals("Index 51 creates wrong output", "AZ", Tools.getExcelColumnName(51));
+
+	}
+
+	@Test(expected = IOException.class)
+	public void testForceWriteFileParent() throws IOException {
+		Path root = Files.createTempDirectory("ToolsTest");
+		Tools.forceWriteFile(new ByteArrayInputStream("".getBytes()), root, root.getParent());
+		FileUtils.forceDelete(root.toFile());
+	}
+
+	@Test(expected = IOException.class)
+	public void testForceWriteFileSelf() throws IOException {
+		Path root = Files.createTempDirectory("ToolsTest");
+		Tools.forceWriteFile(new ByteArrayInputStream("".getBytes()), root, root);
+		FileUtils.forceDelete(root.toFile());
+	}
+
+	@Test
+	public void testForceWriteFile() throws IOException {
+		Path root = Files.createTempDirectory("ToolsTest");
+		Tools.forceWriteFile(new ByteArrayInputStream("".getBytes()), root, Paths.get("foo"));
+		Tools.forceWriteFile(new ByteArrayInputStream("".getBytes()), root, Paths.get("foo/bar"));
+		Tools.forceWriteFile(new ByteArrayInputStream("".getBytes()), root, Paths.get("foo/bar/baz"));
+		Tools.forceWriteFile(new ByteArrayInputStream("".getBytes()), root, Paths.get("foo"));
+		Assert.assertTrue(Files.exists(root.resolve("foo")));
+		FileUtils.forceDelete(root.toFile());
+	}
 }

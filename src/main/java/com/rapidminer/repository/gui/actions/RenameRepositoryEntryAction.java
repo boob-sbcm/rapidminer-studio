@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,8 +18,12 @@
 */
 package com.rapidminer.repository.gui.actions;
 
+import java.nio.file.InvalidPathException;
+
+import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.repository.Entry;
+import com.rapidminer.repository.Folder;
 import com.rapidminer.repository.Repository;
 import com.rapidminer.repository.gui.RepositoryTree;
 
@@ -34,27 +38,44 @@ public class RenameRepositoryEntryAction extends AbstractRepositoryAction<Entry>
 	private static final long serialVersionUID = 1L;
 
 	public RenameRepositoryEntryAction(RepositoryTree tree) {
-		super(tree, Entry.class, false, "repository_rename_entry");
+		super(tree, Entry.class, true, "repository_rename_entry");
 	}
 
 	@Override
 	public void actionPerformed(Entry entry) {
-		// no renaming of repositores allowed, RepositoryConfigurationDialog is responsible for that
+		// no renaming of repositories allowed, RepositoryConfigurationDialog is responsible for that
 		if (entry instanceof Repository) {
 			return;
 		}
-		String name = SwingTools.showRepositoryEntryInputDialog("file_chooser.rename", entry.getName(), entry.getName());
-		if ((name != null) && !name.equals(entry.getName())) {
-			boolean success = false;
-			try {
-				success = entry.rename(name);
-			} catch (Exception e) {
-				SwingTools.showSimpleErrorMessage("cannot_rename_entry", e, entry.getName(), name, e.getMessage());
+		if (entry instanceof Folder) {
+			Folder f = (Folder) entry;
+			// if this is the connections folder AND it is named properly as "Connections"
+			if (f.isSpecialConnectionsFolder() && Folder.isConnectionsFolderName(f.getName(), true)) {
 				return;
 			}
-			if (!success) {
-				SwingTools.showVerySimpleErrorMessage("cannot_rename_entry", entry.getName(), name);
-			}
+		}
+
+		String name = SwingTools.showRepositoryEntryInputDialog("file_chooser.rename", entry.getName(), entry.getName());
+		if ((name != null) && !name.equals(entry.getName())) {
+			// don't rename in EDT, RemoteRepository could block entire UI
+			new ProgressThread("repository_rename") {
+				@Override
+				public void run() {
+					boolean success;
+					try {
+						success = entry.rename(name);
+					} catch (InvalidPathException e) {
+						SwingTools.showVerySimpleErrorMessage("cannot_rename_entry_invalid_name_for_os", entry.getName(), name);
+						return;
+					} catch (Exception e) {
+						SwingTools.showSimpleErrorMessage("cannot_rename_entry", e, entry.getName(), name, e.getMessage());
+						return;
+					}
+					if (!success) {
+						SwingTools.showVerySimpleErrorMessage("cannot_rename_entry", entry.getName(), name);
+					}
+				}
+			}.start();
 		}
 	}
 

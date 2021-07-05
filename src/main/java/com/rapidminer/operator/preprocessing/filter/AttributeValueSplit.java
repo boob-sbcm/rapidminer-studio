@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -341,6 +341,7 @@ public class AttributeValueSplit extends AbstractDataProcessing {
 		ParameterType type = new ParameterTypeRegexp(PARAMETER_SPLIT_PATTERN,
 				"The pattern which is used for dividing the nominal values into different parts.", ",");
 		type.setExpert(false);
+		type.setPrimary(true);
 		types.add(type);
 
 		type = new ParameterTypeCategory(PARAMETER_SPLIT_MODE,

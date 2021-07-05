@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,14 +19,13 @@
 package com.rapidminer.repository.internal.remote;
 
 import java.util.List;
-
 import javax.xml.datatype.XMLGregorianCalendar;
 
-import com.rapid_i.repository.wsimport.PluginInfo;
+import com.rapidminer.repository.internal.remote.model.PluginInfo;
 
 
 /**
- * The remote info service can be used to query RapidMiner Server system information.
+ * The remote info service can be used to query RapidMiner AI Hub system information.
  *
  * @author Nils Woehler
  * @since 6.5.0

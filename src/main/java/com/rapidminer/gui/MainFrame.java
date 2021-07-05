@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -21,17 +21,16 @@ package com.rapidminer.gui;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Insets;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
+import java.io.File;
 import java.net.InetAddress;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
-
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -39,29 +38,36 @@ import javax.swing.JComponent;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.event.MenuEvent;
+import javax.swing.event.MenuListener;
 
 import com.rapidminer.BreakpointListener;
 import com.rapidminer.Process;
 import com.rapidminer.ProcessLocation;
 import com.rapidminer.ProcessStorageListener;
 import com.rapidminer.RapidMiner;
-import com.rapidminer.RapidMiner.ExitMode;
+import com.rapidminer.RepositoryProcessLocation;
 import com.rapidminer.core.io.data.source.DataSourceFactoryRegistry;
 import com.rapidminer.core.license.ProductConstraintManager;
 import com.rapidminer.gui.actions.AboutAction;
 import com.rapidminer.gui.actions.Actions;
 import com.rapidminer.gui.actions.AutoWireAction;
+import com.rapidminer.gui.actions.BrowseAction;
+import com.rapidminer.gui.actions.CreateConnectionAction;
 import com.rapidminer.gui.actions.ExitAction;
 import com.rapidminer.gui.actions.ExportProcessAction;
 import com.rapidminer.gui.actions.ImportDataAction;
 import com.rapidminer.gui.actions.ImportProcessAction;
+import com.rapidminer.gui.actions.ManageConfigurablesAction;
 import com.rapidminer.gui.actions.NewPerspectiveAction;
 import com.rapidminer.gui.actions.PauseAction;
 import com.rapidminer.gui.actions.PropagateRealMetaDataAction;
 import com.rapidminer.gui.actions.RedoAction;
+import com.rapidminer.gui.actions.RestoreDefaultPerspectiveAction;
 import com.rapidminer.gui.actions.RunAction;
 import com.rapidminer.gui.actions.SaveAction;
 import com.rapidminer.gui.actions.SaveAsAction;
@@ -72,8 +78,11 @@ import com.rapidminer.gui.actions.UndoAction;
 import com.rapidminer.gui.actions.ValidateAutomaticallyAction;
 import com.rapidminer.gui.actions.ValidateProcessAction;
 import com.rapidminer.gui.actions.export.ShowPrintAndExportDialogAction;
+import com.rapidminer.gui.actions.search.ActionsGlobalSearch;
+import com.rapidminer.gui.actions.search.ActionsGlobalSearchManager;
 import com.rapidminer.gui.actions.startup.NewAction;
 import com.rapidminer.gui.actions.startup.OpenAction;
+import com.rapidminer.gui.actions.startup.TutorialAction;
 import com.rapidminer.gui.dialog.UnknownParametersInfoDialog;
 import com.rapidminer.gui.flow.ErrorTable;
 import com.rapidminer.gui.flow.ProcessPanel;
@@ -95,7 +104,9 @@ import com.rapidminer.gui.processeditor.XMLEditor;
 import com.rapidminer.gui.processeditor.results.ResultDisplay;
 import com.rapidminer.gui.processeditor.results.ResultDisplayTools;
 import com.rapidminer.gui.properties.OperatorPropertyPanel;
+import com.rapidminer.gui.search.action.GlobalSearchAction;
 import com.rapidminer.gui.security.PasswordManager;
+import com.rapidminer.gui.tools.DockingTools;
 import com.rapidminer.gui.tools.ProcessGUITools;
 import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.ResourceAction;
@@ -113,9 +124,12 @@ import com.rapidminer.gui.tools.logging.LogViewer;
 import com.rapidminer.operator.IOContainer;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorChain;
+import com.rapidminer.operator.ProcessSetupError;
 import com.rapidminer.operator.UnknownParameterInformation;
 import com.rapidminer.operator.ports.Port;
 import com.rapidminer.parameter.ParameterType;
+import com.rapidminer.repository.Repository;
+import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
 import com.rapidminer.repository.gui.RepositoryBrowser;
 import com.rapidminer.tools.LogService;
@@ -126,7 +140,6 @@ import com.rapidminer.tools.ProcessTools;
 import com.rapidminer.tools.SystemInfoUtilities;
 import com.rapidminer.tools.SystemInfoUtilities.OperatingSystem;
 import com.rapidminer.tools.config.ConfigurationManager;
-import com.rapidminer.tools.config.gui.ConfigurableDialog;
 import com.rapidminer.tools.container.Pair;
 import com.rapidminer.tutorial.Tutorial;
 import com.rapidminer.tutorial.gui.TutorialBrowser;
@@ -202,7 +215,7 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		public void processUpdated(Process process) {
 			setTitle();
 			if (getProcess().getProcessLocation() != null) {
-				MainFrame.this.SAVE_ACTION.setEnabled(processModel.hasChanged());
+				MainFrame.this.SAVE_ACTION.setEnabled(isChanged());
 			}
 			processPanel.getProcessRenderer().repaint();
 		}
@@ -265,6 +278,15 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	}
 
 	private static final long serialVersionUID = 1L;
+
+	/** The property name for the max row check scale modifier for HTML5 visualizations */
+	public static final String PROPERTY_RAPIDMINER_GUI_VISUALIZATIONS_MAX_ROWS_MODIFIER = "rapidminer.gui.visualizations.max_row_modifier";
+
+	/** The property name whether legacy simple charts should still be hidden in the results */
+	public static final String PROPERTY_RAPIDMINER_GUI_PLOTTER_SHOW_LEGACY_SIMPLE_CHARTS = "rapidminer.gui.plotter.legacy.simple_charts.show";
+
+	/** The property name whether legacy simple charts should still be shown in the results */
+	public static final String PROPERTY_RAPIDMINER_GUI_PLOTTER_SHOW_LEGACY_ADVANCED_CHARTS = "rapidminer.gui.plotter.legacy.advanced_charts.show";
 
 	/** The property name for &quot;The pixel size of each plot in matrix plots.&quot; */
 	public static final String PROPERTY_RAPIDMINER_GUI_PLOTTER_MATRIXPLOT_SIZE = "rapidminer.gui.plotter.matrixplot.size";
@@ -357,45 +379,46 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	public static final int EDIT_MODE = 0;
 	public static final int RESULTS_MODE = 1;
 
-	public final transient Action AUTO_WIRE = new AutoWireAction(this);
+	public final transient Action AUTO_WIRE = new AutoWireAction();
 
 	public final transient Action NEW_ACTION = new NewAction();
 	public final transient Action OPEN_ACTION = new OpenAction();
 	public final transient SaveAction SAVE_ACTION = new SaveAction();
 	public final transient Action SAVE_AS_ACTION = new SaveAsAction();
-	public final transient ToggleAction PROPAGATE_REAL_METADATA_ACTION = new PropagateRealMetaDataAction(this);
+	public final transient ToggleAction PROPAGATE_REAL_METADATA_ACTION = new PropagateRealMetaDataAction();
 
-	private final transient Action importDataAction = new ImportDataAction();
+	public final transient Action IMPORT_DATA_ACTION = new ImportDataAction();
 	public final transient Action IMPORT_PROCESS_ACTION = new ImportProcessAction();
 	public final transient Action EXPORT_PROCESS_ACTION = new ExportProcessAction();
 
 	// ---------- Export as Image/Print actions -----------------
 	public final transient Action EXPORT_ACTION = new ShowPrintAndExportDialogAction(false);
 
-	public final transient Action EXIT_ACTION = new ExitAction(this);
+	public final transient Action EXIT_ACTION = new ExitAction();
 
-	public final transient RunAction RUN_ACTION = new RunAction(this);
-	public final transient Action PAUSE_ACTION = new PauseAction(this);
-	public final transient Action STOP_ACTION = new StopAction(this);
-	public final transient Action VALIDATE_ACTION = new ValidateProcessAction(this);
+	public final transient RunAction RUN_ACTION = new RunAction();
+	public final transient Action PAUSE_ACTION = new PauseAction();
+	public final transient Action STOP_ACTION = new StopAction();
+	public final transient Action VALIDATE_ACTION = new ValidateProcessAction();
 	public final transient ToggleAction VALIDATE_AUTOMATICALLY_ACTION = new ValidateAutomaticallyAction();
+
+	public final transient Action CREATE_CONNECTION = new CreateConnectionAction();
 
 	private transient JButton runRemoteToolbarButton;
 
-	public final transient Action NEW_PERSPECTIVE_ACTION = new NewPerspectiveAction(this);
+	public final transient Action NEW_PERSPECTIVE_ACTION = new NewPerspectiveAction();
+	public final transient Action RESTORE_PERSPECTIVE_ACTION = new RestoreDefaultPerspectiveAction();
 	public final transient Action SETTINGS_ACTION = new SettingsAction();
-	public final transient Action UNDO_ACTION = new UndoAction(this);
-	public final transient Action REDO_ACTION = new RedoAction(this);
-	public final transient Action MANAGE_CONFIGURABLES_ACTION = new ResourceAction(true, "manage_configurables") {
+	public final transient Action UNDO_ACTION = new UndoAction();
+	public final transient Action REDO_ACTION = new RedoAction();
+	public final transient Action MANAGE_CONFIGURABLES_ACTION = new ManageConfigurablesAction();
 
-		private static final long serialVersionUID = 1L;
-
-		@Override
-		public void actionPerformed(final ActionEvent e) {
-			ConfigurableDialog dialog = new ConfigurableDialog(getProcess());
-			dialog.setVisible(true);
-		}
-	};
+	public final transient Action TUTORIAL_ACTION = new TutorialAction();
+	public final transient Action BROWSE_VIDEOS_ACTION = new BrowseAction("toolbar_resources.help_videos", URI.create("https://redirects.rapidminer.com/app/studio/8.1/getting-started-video/main_tool_bar"));
+	public final transient Action BROWSE_COMMUNITY_ACTION = new BrowseAction("toolbar_resources.help_forum", URI.create("https://redirects.rapidminer.com/app/studio/7.2/forum/main_tool_bar"));
+	public final transient Action BROWSE_DOCUMENTATION_ACTION = new BrowseAction("toolbar_resources.documentation", URI.create("https://redirects.rapidminer.com/app/studio/7.2/documentation/main_tool_bar"));
+	public final transient Action BROWSE_SUPPORT_ACTION = new BrowseAction("toolbar_resources.support", URI.create("https://redirects.rapidminer.com/app/studio/7.2/support/main_tool_bar"));
+	public final transient Action ABOUT_ACTION = new AboutAction();
 
 	// --------------------------------------------------------------------------------
 
@@ -448,6 +471,8 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	 */
 	private BubbleWindow missingParameterBubble;
 
+	private transient ActionsGlobalSearchManager actionsGlobalSearchManager;
+
 	private final JMenuBar menuBar;
 
 	private final MainToolBar toolBar;
@@ -461,6 +486,8 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	private final JMenu settingsMenu;
 
 	private final JMenu connectionsMenu;
+
+	private final JMenu legacyConnectionsMenu;
 
 	private final JMenu viewMenu;
 
@@ -510,30 +537,22 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	// --------------------------------------------------------------------------------
 	// LISTENERS And OBSERVERS
 
-	private final PerspectiveChangeListener perspectiveChangeListener = new PerspectiveChangeListener() {
+	private final PerspectiveChangeListener perspectiveChangeListener = perspective -> {
+		// check all ConditionalActions on perspective switch
+		getActions().enableActions();
 
-		@Override
-		public void perspectiveChangedTo(Perspective perspective) {
-			// check all ConditionalActions on perspective switch
-			getActions().enableActions();
+		SwingTools.invokeLater(() -> {
 
 			// try to request focus for the process renderer so actions are enabled after
-			// perspective switch and
-			// ProcessRenderer is visible
+			// perspective switch and ProcessRenderer is visible
 			if (getProcessPanel().getProcessRenderer().isShowing()) {
 				getProcessPanel().getProcessRenderer().requestFocusInWindow();
 			}
-		}
+		});
 	};
 
-	private long lastUpdate = 0;
-	private final Timer updateTimer = new Timer(500, new ActionListener() {
-
-		@Override
-		public void actionPerformed(final ActionEvent e) {
-			updateProcessNow();
-		}
-	}) {
+	private volatile long lastUpdate = 0;
+	private final Timer updateTimer = new Timer(500, e -> updateProcessNow()) {
 
 		private static final long serialVersionUID = 1L;
 
@@ -630,13 +649,12 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 
 					@Override
 					public void quit() {
-						RapidMiner.quit(ExitMode.NORMAL);
+					    MainFrame.this.exit(false);
 					}
 				};
-				OSXAdapter.adaptUI(this, SETTINGS_ACTION, new AboutAction(this), quitListener);
+				OSXAdapter.adaptUI(this, SETTINGS_ACTION, new AboutAction(), quitListener);
 			} catch (Throwable t) {
-				// catch everything - in case the OSX adapter is called without being on a OS X
-				// system
+				// catch everything - in case the OSX adapter is called without being on a OS X system
 				// or the Java classes have been removed from OS X JRE it will just log an error
 				// instead of breaking the program start-up
 				LogService.getRoot().log(Level.WARNING, "com.rapidminer.gui.MainFrame.could_not_adapt_OSX_look_and_feel", t);
@@ -679,8 +697,8 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		toolBarContainer.add(dockingDesktop, BorderLayout.CENTER);
 
 		systemMonitor.startMonitorThread();
+		processPanel.getDockKey().setCloseEnabled(false);
 		resultDisplay.getDockKey().setCloseEnabled(false);
-		resultDisplay.getDockKey().setAutoHideEnabled(false);
 		resultDisplay.init(this);
 
 		// menu bar
@@ -697,10 +715,11 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		fileMenu.add(SAVE_ACTION);
 		fileMenu.add(SAVE_AS_ACTION);
 		fileMenu.addSeparator();
-		fileMenu.add(importDataAction);
+		fileMenu.add(IMPORT_DATA_ACTION);
 		fileMenu.add(IMPORT_PROCESS_ACTION);
 		fileMenu.add(EXPORT_PROCESS_ACTION);
 		menuBar.add(fileMenu);
+
 
 		// edit menu
 		((ResourceAction) actions.INFO_OPERATOR_ACTION).addToActionMap(JComponent.WHEN_FOCUSED, true, true, null,
@@ -733,8 +752,10 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 			editMenu.add(item.createMenuItem());
 		}
 		editMenu.add(actions.TOGGLE_ALL_BREAKPOINTS.createMenuItem());
+		editMenu.add(actions.REMOVE_ALL_BREAKPOINTS);
 		// editMenu.add(actions.MAKE_DIRTY_ACTION);
 		menuBar.add(editMenu);
+
 
 		// process menu
 		processMenu = new ResourceMenu("process");
@@ -756,13 +777,32 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		processMenu.add(layoutMenu);
 		menuBar.add(processMenu);
 
+
 		// view menu
 		viewMenu = new ResourceMenu("view");
 		viewMenu.setMargin(menuBarInsets);
 		viewMenu.add(new PerspectiveMenu(perspectiveController));
 		viewMenu.add(NEW_PERSPECTIVE_ACTION);
 		viewMenu.add(dockableMenu = new DockableMenu(dockingContext));
-		viewMenu.add(perspectiveController.getRestoreDefaultAction());
+		viewMenu.addMenuListener(new MenuListener() {
+			@Override
+			public void menuSelected(MenuEvent e) {
+				dockableMenu.fill();
+			}
+
+			@Override
+			public void menuDeselected(MenuEvent e) {
+				// ignore
+			}
+
+			@Override
+			public void menuCanceled(MenuEvent e) {
+				// ignore
+			}
+		});
+		viewMenu.add(RESTORE_PERSPECTIVE_ACTION);
+
+
 		menuBar.add(viewMenu);
 
 		// create settings menu (will be added in finishInitialization())
@@ -772,10 +812,22 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		// connections menu
 		connectionsMenu = new ResourceMenu("connections");
 		connectionsMenu.setMargin(menuBarInsets);
+		connectionsMenu.add(CREATE_CONNECTION);
+		connectionsMenu.addSeparator();
 		menuBar.add(connectionsMenu);
+
+		// legacy connections menu
+		legacyConnectionsMenu = new ResourceMenu("legacy_connections");
 
 		// help menu
 		helpMenu = new ResourceMenu("help");
+		helpMenu.add(TUTORIAL_ACTION);
+		helpMenu.add(BROWSE_VIDEOS_ACTION);
+		helpMenu.add(BROWSE_COMMUNITY_ACTION);
+		helpMenu.add(BROWSE_DOCUMENTATION_ACTION);
+		helpMenu.add(BROWSE_SUPPORT_ACTION);
+		helpMenu.addSeparator();
+		helpMenu.add(ABOUT_ACTION);
 
 		// extensions menu
 		extensionsMenu = new ResourceMenu("extensions");
@@ -788,6 +840,9 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		getContentPane().add(toolBar, BorderLayout.NORTH);
 		getContentPane().add(getStatusBar(), BorderLayout.SOUTH);
 		getStatusBar().startClockThread();
+
+		// initialize Ctrl+F shortcut to start Global Search
+		new GlobalSearchAction();
 
 		setProcess(new Process(), true);
 
@@ -824,15 +879,24 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 
 		// Configurators (if they exist)
 		if (!ConfigurationManager.getInstance().isEmpty()) {
-			connectionsMenu.addSeparator();
-			connectionsMenu.add(MANAGE_CONFIGURABLES_ACTION);
+			legacyConnectionsMenu.add(MANAGE_CONFIGURABLES_ACTION);
 		}
+
+		// Add legacy menu (if not empty)
+		if (legacyConnectionsMenu.getMenuComponentCount() > 0) {
+			connectionsMenu.addSeparator();
+			connectionsMenu.add(legacyConnectionsMenu);
+		}
+
+		// remove duplicated separators
+		removeDuplicatedSeparators(connectionsMenu);
 
 		// add export and exit as last file menu actions
 		fileMenu.addSeparator();
 		fileMenu.add(EXPORT_ACTION);
 		fileMenu.addSeparator();
 		fileMenu.add(EXIT_ACTION);
+
 
 		// Password Manager
 		settingsMenu.add(PasswordManager.OPEN_WINDOW);
@@ -892,7 +956,7 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	}
 
 	/**
-	 * @return the toolbar button for running processes on the Server
+	 * @return the toolbar button for running processes on the AI Hub
 	 */
 	public JButton getRunRemoteToolbarButton() {
 		return runRemoteToolbarButton;
@@ -905,14 +969,6 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		} else {
 			return process.getProcessState();
 		}
-	}
-
-	/**
-	 * @deprecated Use {@link #getProcess()} instead
-	 */
-	@Deprecated
-	public final Process getExperiment() {
-		return getProcess();
 	}
 
 	public final Process getProcess() {
@@ -1067,17 +1123,6 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	}
 
 	/**
-	 * Sets a new process and registers the MainFrame listener. Please note that this method does
-	 * not invoke {@link #processChanged()}. Do so if necessary.
-	 *
-	 * @deprecated Use {@link #setProcess(Process, boolean)} instead
-	 */
-	@Deprecated
-	public void setExperiment(final Process process) {
-		setProcess(process, true);
-	}
-
-	/**
 	 * Sets a (new) process.
 	 *
 	 * @param process
@@ -1095,6 +1140,10 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	 */
 	private void setOrOpenProcess(final Process process, final boolean newProcess, final boolean open) {
 		boolean firstProcess = getProcess() == null;
+		if (newProcess) {
+			// set origin if possible
+			ProcessTools.setProcessOrigin(process);
+		}
 		processModel.setProcess(process, newProcess, open);
 		if (newProcess) {
 			enableUndoAction();
@@ -1103,6 +1152,9 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 				// window is not yet visible. So to avoid that we set design and then welcome
 				// during startup, avoid applying design if this is the first process we create.
 				perspectiveController.showPerspective(PerspectiveModel.DESIGN);
+				if (PerspectiveModel.DESIGN.equals(perspectiveController.getModel().getSelectedPerspective().getName())) {
+					DockingTools.openDockable(ProcessPanel.PROCESS_PANEL_DOCK_KEY);
+				}
 			}
 		}
 		updateProcessNow();
@@ -1131,6 +1183,17 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 
 	/** Returns true if the process has changed since the last save. */
 	public boolean isChanged() {
+		// repos that are transient should not allow save of an opened process, therefore we fake no changes here
+		if (getProcess().getProcessLocation() instanceof RepositoryProcessLocation) {
+			try {
+				Repository repo = ((RepositoryProcessLocation) getProcess().getProcessLocation()).getRepositoryLocation().getRepository();
+				if (repo.isTransient()) {
+					return false;
+				}
+			} catch (RepositoryException e) {
+				// ignore, should not happen but does not matter
+			}
+		}
 		return processModel.hasChanged();
 	}
 
@@ -1192,8 +1255,20 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 				// location string exceeding arbitrary number will be cut into repository name +
 				// /.../ + process name
 				if (locString.length() > MAX_LOCATION_TITLE_LENGTH) {
-					locString = RepositoryLocation.REPOSITORY_PREFIX + process.getRepositoryLocation().getRepositoryName()
-							+ RepositoryLocation.SEPARATOR + "..." + RepositoryLocation.SEPARATOR + loc.getShortName();
+					if (process.getRepositoryLocation() != null) {
+						locString = RepositoryLocation.REPOSITORY_PREFIX + process.getRepositoryLocation().getRepositoryName()
+								+ RepositoryLocation.SEPARATOR + "..." + RepositoryLocation.SEPARATOR + loc.getShortName();
+					} else {
+						// build a string like /home/jdoe/.../processes/process.rmp
+						int maxPartLength = MAX_LOCATION_TITLE_LENGTH / 2;
+						// determine length of the first part
+						int firstPartEnd = locString.lastIndexOf(File.separator, maxPartLength);
+						// + 1 to include the separator char
+						firstPartEnd = firstPartEnd == -1 ? maxPartLength : firstPartEnd + 1;
+						int secondPartStart = locString.indexOf(File.separator, locString.length() - maxPartLength);
+						secondPartStart = secondPartStart == -1 ? locString.length() - maxPartLength : secondPartStart;
+						locString = new StringBuilder().append(locString, 0, firstPartEnd).append("...").append(locString, secondPartStart, locString.length()).toString();
+					}
 				}
 			} else {
 				locString = "<new process";
@@ -1320,6 +1395,7 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 			}
 		}
 		stopProcess();
+		RapidMinerGUI.saveGUIProperties();
 		dispose();
 		RapidMiner.quit(relaunch ? RapidMiner.ExitMode.RELAUNCH : RapidMiner.ExitMode.NORMAL);
 	}
@@ -1328,21 +1404,16 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	public void updateRecentFileList() {
 		recentFilesMenu.removeAll();
 		List<ProcessLocation> recentFiles = RapidMinerGUI.getRecentFiles();
-		int j = 1;
 		for (final ProcessLocation recentLocation : recentFiles) {
-			JMenuItem menuItem = new JMenuItem(j + " " + recentLocation.toMenuString());
-			menuItem.setMnemonic('0' + j);
-			menuItem.addActionListener(new ActionListener() {
-
-				@Override
-				public void actionPerformed(final ActionEvent e) {
-					if (RapidMinerGUI.getMainFrame().close()) {
-						com.rapidminer.gui.actions.OpenAction.open(recentLocation, true);
-					}
+			// whitespaces to create a gap between icon and text as #setIconTextGap(int) sets a gap to both sides of the icon...
+			JMenuItem menuItem = new JMenuItem("   " + recentLocation.toMenuString());
+			menuItem.setIcon(SwingTools.createIcon("16/" + recentLocation.getIconName()));
+			menuItem.addActionListener(e -> {
+				if (RapidMinerGUI.getMainFrame().close()) {
+					com.rapidminer.gui.actions.OpenAction.open(recentLocation, true);
 				}
 			});
 			recentFilesMenu.add(menuItem);
-			j++;
 		}
 	}
 
@@ -1573,6 +1644,14 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	}
 
 	/**
+	 * This returns the legacy connections menu to change menu entries
+	 * @since 9.3
+	 */
+	public JMenu getLegacyConnectionsMenu() {
+		return legacyConnectionsMenu;
+	}
+
+	/**
 	 * This returns the settings menu to change menu entries.
 	 *
 	 * @deprecated the tools menu was split into multiple menus. Use {@link #getConnectionsMenu()}
@@ -1636,6 +1715,26 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 	}
 
 	/**
+	 * The {@link com.rapidminer.search.GlobalSearchManager} for {@link ResourceAction}s.
+	 *
+	 * @return the manager to add resource actions to the Global Search.
+	 * @since 8.1
+	 */
+	public ActionsGlobalSearchManager getActionsGlobalSearchManager() {
+		return actionsGlobalSearchManager;
+	}
+
+	/**
+	 * Prepare adding menu actions to global search. Calling multiple times has no effect.
+	 * @since 8.1
+	 */
+	protected void initActionsGlobalSearch() {
+		if (actionsGlobalSearchManager == null) {
+			actionsGlobalSearchManager = (ActionsGlobalSearchManager) new ActionsGlobalSearch().getSearchManager();
+		}
+	}
+
+	/**
 	 * The {@link TutorialSelector} holds the selected {@link Tutorial}.
 	 *
 	 * @return the registered tutorial selector
@@ -1677,7 +1776,7 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 		// if any port needs data but is not connected. As it cannot predict execution behavior
 		// (e.g. Branch operators), this may turn up problems which would not occur during
 		// process execution
-		Port missingInputPort = ProcessTools.getPortWithoutMandatoryConnection(process);
+		Pair<Port, ProcessSetupError> missingInputPort = ProcessTools.getPortWithoutMandatoryConnection(process);
 		if (missingInputPort != null) {
 			// if there is already one of these, kill
 			if (missingInputBubble != null) {
@@ -1710,5 +1809,24 @@ public class MainFrame extends ApplicationFrame implements WindowListener {
 
 		// no showstopper
 		return false;
+	}
+
+	/**
+	 * Removes duplicated separators from a JMenu
+	 *
+	 * @param menu the menu
+	 */
+	private static void removeDuplicatedSeparators(JMenu menu) {
+		int separatorCount = 0;
+		for (Component component : menu.getMenuComponents()) {
+			if (component instanceof JPopupMenu.Separator) {
+				separatorCount++;
+			} else {
+				separatorCount = 0;
+			}
+			if (separatorCount > 1) {
+				menu.remove(component);
+			}
+		}
 	}
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -41,7 +41,7 @@ public class ResourceLabel extends JLabel {
 	 * <li>gui.label.-key-.label as label</li>
 	 * <li>gui.label.-key-.tip as tooltip</li>
 	 * <li>gui.label.-key-.mne as mnemonic</li>
-	 * <li>gui.label.-key-.icon as icon. Here the size must be assigned by leeding 24/ or something
+	 * <li>gui.label.-key-.icon as icon. Here the size must be assigned by leading 24/ or something
 	 * like this</li>
 	 * </ul>
 	 */
@@ -52,10 +52,13 @@ public class ResourceLabel extends JLabel {
 		String mne = getMessageOrNull(i18nKey + ".mne");
 		String icon = getMessageOrNull(i18nKey + ".icon");
 		if (icon != null) {
+			if (!icon.contains("/")) {
+				icon = "16/" + icon;
+			}
 			ImageIcon iicon = SwingTools.createIcon(icon);
 			setIcon(iicon);
 		}
-		if (mne != null) {
+		if (mne != null && !mne.isEmpty()) {
 			setDisplayedMnemonic(mne.charAt(0));
 		}
 	}

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,7 +19,6 @@
 package com.rapidminer.repository.local;
 
 import java.io.File;
-
 import javax.swing.event.EventListenerList;
 
 import org.w3c.dom.Document;
@@ -33,18 +32,22 @@ import com.rapidminer.repository.Repository;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryListener;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
+import com.rapidminer.repository.RepositoryLocationType;
 import com.rapidminer.repository.RepositoryManager;
 import com.rapidminer.repository.gui.LocalRepositoryPanel;
 import com.rapidminer.repository.gui.RepositoryConfigurationPanel;
 import com.rapidminer.tools.FileSystemService;
 import com.rapidminer.tools.I18N;
+import com.rapidminer.tools.LogService;
+import com.rapidminer.tools.SystemInfoUtilities;
 import com.rapidminer.tools.XMLException;
 
 
 /**
  * A repository backed by the local file system. Each entry is backed by one or more files.
  *
- * @author Simon Fischer
+ * @author Simon Fischer, Jan Czogalla
  *
  */
 public class LocalRepository extends SimpleFolder implements Repository {
@@ -54,7 +57,7 @@ public class LocalRepository extends SimpleFolder implements Repository {
 	private File root;
 
 	public enum LocalState {
-		ACCESSIBLE(null), NOT_ACCESSIBLE(I18N.getMessage(I18N.getGUIBundle(), "gui.repository.not_accessible.message"));
+		ACCESSIBLE(I18N.getGUIMessage("gui.repository.local.legacy.label")), NOT_ACCESSIBLE(I18N.getGUIMessage("gui.repository.local.not_accessible_legacy.label"));
 
 		private String state;
 
@@ -93,6 +96,7 @@ public class LocalRepository extends SimpleFolder implements Repository {
 			throw new RepositoryException("Folder '" + root + "' is not writable.");
 		}
 		setRepository(this);
+		ensureConnectionsFolder();
 	}
 
 	public File getRoot() {
@@ -101,14 +105,27 @@ public class LocalRepository extends SimpleFolder implements Repository {
 
 	@Override
 	public boolean rename(String newName) {
+		String formerName = getName();
 		setName(newName);
-		fireEntryRenamed(this);
+		fireEntryMoved(this, null, formerName);
 		return true;
 	}
 
 	@Override
 	public File getFile() {
 		return getRoot();
+	}
+
+	/**
+	 * Get a file associated with this {@link LocalRepository}, specified by the given suffix.
+	 * The returned file is located in the {@link #getRoot() root folder} and it's name is
+	 * a concatenation of {@link #getName()} and the {@code suffix}.
+	 *
+	 * @since 9.3
+	 */
+	@Override
+	protected File getFile(String suffix) {
+		return new File(getRoot(), getName() + suffix);
 	}
 
 	public void setRoot(File root) {
@@ -125,11 +142,16 @@ public class LocalRepository extends SimpleFolder implements Repository {
 		listeners.remove(RepositoryListener.class, l);
 	}
 
-	protected void fireEntryRenamed(final Entry entry) {
+	protected void fireEntryChanged(final Entry entry) {
 		for (RepositoryListener l : listeners.getListeners(RepositoryListener.class)) {
 			l.entryChanged(entry);
 		}
+	}
 
+	protected void fireEntryMoved(final Entry newEntry, Folder formerParent, String formerName) {
+		for (RepositoryListener l : listeners.getListeners(RepositoryListener.class)) {
+			l.entryMoved(newEntry, formerParent, formerName);
+		}
 	}
 
 	protected void fireEntryAdded(final Entry newEntry, final Folder parent) {
@@ -152,18 +174,13 @@ public class LocalRepository extends SimpleFolder implements Repository {
 
 	@Override
 	public String getDescription() {
-		return "This is a local repository stored on your local computer at " + getFile() + ".";
-	}
-
-	@Override
-	public Entry locate(String entry) throws RepositoryException {
-		return RepositoryManager.getInstance(null).locate(this, entry, false);
+		return "This is a legacy local repository stored on your local computer at " + getFile() + ".";
 	}
 
 	@Override
 	public RepositoryLocation getLocation() {
 		try {
-			return new RepositoryLocation(getName(), new String[0]);
+			return new RepositoryLocationBuilder().withLocationType(RepositoryLocationType.FOLDER).buildFromPathComponents(getName(), new String[0]);
 		} catch (MalformedRepositoryLocationException e) {
 			throw new RuntimeException(e);
 		}
@@ -225,8 +242,42 @@ public class LocalRepository extends SimpleFolder implements Repository {
 	}
 
 	@Override
+	public boolean supportsConnections() {
+		return true;
+	}
+
+	@Override
 	public RepositoryConfigurationPanel makeConfigurationPanel() {
 		return new LocalRepositoryPanel(null, false);
+	}
+
+
+	/**
+	 * Checks if a Connections folder already exists for this repository and if not, creates it.
+	 */
+	private void ensureConnectionsFolder() {
+		String rootPath = root.getAbsolutePath();
+		File connectionsDirectory = new File(rootPath, Folder.CONNECTION_FOLDER_NAME);
+		if (connectionsDirectory.exists()) {
+			return;
+		}
+		if (SystemInfoUtilities.getOperatingSystem() != SystemInfoUtilities.OperatingSystem.WINDOWS) {
+			// need to check root folders case insensitive
+			File[] files = root.listFiles(File::isDirectory);
+			if (files != null) {
+				for (File file : files) {
+					if (Folder.isConnectionsFolderName(file.getName(), true)) {
+						return;
+					}
+				}
+			} else {
+				LogService.getRoot().severe(() -> I18N.getErrorMessage("repository.create_connections_failed", getName()));
+			}
+		}
+
+		if (!connectionsDirectory.mkdirs()) {
+			LogService.getRoot().severe(() -> I18N.getErrorMessage("repository.create_connections_failed", getName()));
+		}
 	}
 
 	/**

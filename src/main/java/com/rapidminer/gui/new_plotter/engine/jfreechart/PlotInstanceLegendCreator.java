@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -78,8 +78,9 @@ import org.jfree.chart.LegendItemCollection;
 
 /**
  * @author Marius Helf, Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class PlotInstanceLegendCreator {
 
 	// get this string by creating a closed bezier path in e.g. inkscape, save as svg and copy the

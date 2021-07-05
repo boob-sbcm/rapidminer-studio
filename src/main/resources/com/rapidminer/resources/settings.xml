@@ -17,8 +17,12 @@
 			<property key="rapidminer.general.fractiondigits.percent" />
 			<property key="rapidminer.general.fractiondigits.numbers" />
 		</group>
+		<group key="rapidminer.preferences.subgroup.general.parallel">
+			<property key="rapidminer.general.number_of_threads" />
+			<property key="rapidminer.general.number_of_processes" />
+			<property key="rapidminer.general.number_of_threads_background" />
+		</group>
 		<property key="rapidminer.general.randomseed" />
-		<property key="rapidminer.general.number_of_threads" />
 		<property key="rapidminer.general.md_nominal_values_limit" />
 		<property key="rapidminer.general.max_rows_used_for_guessing" />
 		<property key="rapidminer.general.max_process_execution_nesting_depth" />
@@ -28,23 +32,42 @@
 		<property key="rapidminer.init.plugins.location" />
 	</group>
 	<group key="system">
-		<property key="maxMemory" />
-		<property key="rapidminer.system.legacy_data_mgmt" />
-		<property key="connection.timeout" />
-		<property key="account_server_url" />
+		<group key="rapidminer.preferences.subgroup.system.data">
+			<property key="maxMemory" />
+			<property key="rapidminer.system.legacy_data_mgmt" />
+		</group>
+		<group key="rapidminer.preferences.subgroup.system.network">
+			<property key="connection.timeout" />
+			<property key="account_server_url" />
+			<property key="rapidminer.system.network.follow_https_to_http" />
+			<property key="rapidminer.system.network.follow_http_to_https" />
+			<property key="rapidminer.system.network.default_user_agent" />
+		</group>
+		<group key="rapidminer.preferences.subgroup.system.file_cache">
+			<property key="rapidminer.system.file_cache.connection.keep" />
+		</group>
+		<group key="rapidminer.preferences.subgroup.system.files">
+			<property key="rapidminer.system.files.file_browser" />
+			<property key="rapidminer.system.files.open_file_commands" />
+		</group>
 	</group>
 	<group key="tools">
 		<group key="rapidminer.preferences.subgroup.tools.mail">
 			<property key="rapidminer.tools.mail.method" />
-			<property key="rapidminer.tools.sendmail.command" />
+			<property key="rapidminer.tools.mail.sender" />
 			<property key="rapidminer.tools.mail.default_recipient" />
 			<property key="rapidminer.tools.mail.process_duration_for_mail" />
+		</group>
+	    <group key="rapidminer.preferences.subgroup.tools.sendmail">
+			<property key="rapidminer.tools.sendmail.command" />
 		</group>
 		<group key="rapidminer.preferences.subgroup.tools.smtp">
 			<property key="rapidminer.tools.smtp.host" />
 			<property key="rapidminer.tools.smtp.port" />
 			<property key="rapidminer.tools.smtp.user" />
 			<property key="rapidminer.tools.smtp.passwd" />
+			<property key="rapidminer.tools.smtp.security" />
+			<property key="rapidminer.tools.smtp.authentication" />
 		</group>
 		<property key="rapidminer.tools.editor" />
 		<property key="rapidminer.tools.db.assist.show_only_standard_tables" />
@@ -58,7 +81,7 @@
 			<property key="rapidminer.update.url" />
 		</group>
 		<group key="rapidminer.preferences.subgroup.update.beta_program">
-			<property key="rapidminer.update.beta_features" />
+			<property key="rapidminer.update.beta_features.v3" />
 		</group>
 	</group>
 	<group key="gui">
@@ -69,6 +92,12 @@
 			<property key="rapidminer.gui.resolve_relative_repository_locations" />
 		</group>
 		<group key="rapidminer.preferences.subgroup.gui.plotter">
+			<property key="rapidminer.gui.visualizations.max_row_modifier" />
+			<property key="rapidminer.gui.plotter.legacy.simple_charts.show" />
+			<property key="rapidminer.gui.plotter.legacy.advanced_charts.show" />
+			<!--
+			Deprecated since 9.2.0, where the new HTML5 visualizations took over
+			-->
 			<property key="rapidminer.gui.plotter.matrixplot.size" />
 			<property key="rapidminer.gui.plotter.rows.maximum" />
 			<property key="rapidminer.gui.plotter.default.maximum" />
@@ -100,15 +129,18 @@
 		<group key="rapidminer.preferences.subgroup.gui.modelling">
 			<property key="rapidminer.gui.drag_target_highlighting" />
 			<property key="rapidminer.gui.snap_to_grid" />
+            <property key="rapidminer.gui.move_connected_operators" />
 			<property key="rapidminer.gui.autowire_input" />
 			<property key="rapidminer.gui.autowire_output" />
-			<property key="rapidminer.gui.disconnect_on_disable" />
+			<property key="rapidminer.gui.disable_op_conn_behavior" />
+			<property key="rapidminer.gui.delete_op_conn_behavior" />
 		</group>
 		<property key="rapidminer.gui.entry_open_in_filebrowser" />
 		<property key="rapidminer.gui.add_breakpoint_results_to_history" />
 		<property key="rapidminer.gui.fetch_data_base_table_names" />
 		<property key="rapidminer.gui.evaluate_meta_data_for_sql_queries" />
 		<property key="rapidminer.gui.processinfo.show" />
+		<property key="rapidminer.gui.font_config" />
 	</group>
 	<group key="proxy">
 		<group key="rapidminer.preferences.subgroup.proxy.settings">
@@ -135,5 +167,10 @@
 			<property key="rapidminer.proxy.ftp.proxyPort" />
 		</group>
 
+	</group>
+	<group key="search">
+		<group key="rapidminer.preferences.subgroup.search.repository">
+			<property key="rapidminer.search.repository.enable_full_indexing" />
+		</group>
 	</group>
 </settings>

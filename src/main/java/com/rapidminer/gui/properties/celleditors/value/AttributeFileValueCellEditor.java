@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -45,14 +45,16 @@ public class AttributeFileValueCellEditor extends FileValueCellEditor {
 
 	private transient Operator exampleSource;
 
+	private JButton button;
+
 	public AttributeFileValueCellEditor(ParameterTypeAttributeFile type) {
 		super(type);
-		JButton button = new JButton(new ResourceAction(true, "edit_attributefile") {
+		button = new JButton(new ResourceAction(true, "edit_attributefile") {
 
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				buttonPressed();
 			}
 		});
@@ -80,5 +82,10 @@ public class AttributeFileValueCellEditor extends FileValueCellEditor {
 	@Override
 	public boolean rendersLabel() {
 		return false;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 }

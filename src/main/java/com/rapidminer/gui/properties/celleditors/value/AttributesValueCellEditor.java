@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -57,7 +57,7 @@ public class AttributesValueCellEditor extends AbstractCellEditor implements Pro
 			private static final long serialVersionUID = -4890375754223285831L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				LinkedList<String> preSelectedAttributeNames = new LinkedList<>();
 				String combinedNames = null;
 				try {
@@ -126,6 +126,11 @@ public class AttributesValueCellEditor extends AbstractCellEditor implements Pro
 	public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus,
 			int row, int column) {
 		return button;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 
 }

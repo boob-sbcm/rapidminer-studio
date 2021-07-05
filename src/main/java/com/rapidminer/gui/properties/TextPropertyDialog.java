@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -31,6 +31,7 @@ import org.fife.ui.rsyntaxtextarea.RSyntaxDocument;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rtextarea.RTextScrollPane;
 
+import com.rapidminer.gui.ApplicationFrame;
 import com.rapidminer.gui.properties.celleditors.value.TextValueCellEditor;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.SQLEditor;
@@ -68,13 +69,13 @@ public class TextPropertyDialog extends PropertyDialog {
 			private static final long serialVersionUID = 8857840715142145951L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				Dimension screenDim = Toolkit.getDefaultToolkit().getScreenSize();
 				Dimension dim = new Dimension((int) (screenDim.width * 0.9), (int) (screenDim.height * 0.9));
 				Dimension currentSize = getSize();
 				if (currentSize.getHeight() != dim.getHeight() && currentSize.getWidth() != dim.getWidth()) {
 					setSize(dim);
-					setLocationRelativeTo(null);
+					setLocationRelativeTo(ApplicationFrame.getApplicationFrame());
 					resizeButton.setText(I18N.getMessage(I18N.getGUIBundle(), "gui.action.text_dialog.shrink.label"));
 					resizeButton.setToolTipText(I18N.getMessage(I18N.getGUIBundle(), "gui.action.text_dialog.shrink.tip"));
 					resizeButton.setMnemonic(I18N.getMessage(I18N.getGUIBundle(), "gui.action.text_dialog.shrink.mne")

@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.new_plotter.gui;
 
 import java.awt.Color;
@@ -26,7 +26,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.util.Map;
-
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
@@ -40,25 +39,25 @@ import javax.swing.event.PopupMenuListener;
 
 import org.jfree.chart.plot.PlotOrientation;
 
-import com.rapidminer.gui.new_plotter.StaticDebug;
 import com.rapidminer.gui.new_plotter.data.PlotInstance;
 import com.rapidminer.gui.new_plotter.gui.cellrenderer.ColorSchemeComboBoxRenderer;
 import com.rapidminer.gui.new_plotter.gui.cellrenderer.EnumComboBoxCellRenderer;
-import com.rapidminer.gui.new_plotter.gui.popup.PopupAction;
-import com.rapidminer.gui.new_plotter.gui.popup.PopupAction.PopupPosition;
+import com.rapidminer.gui.popup.PopupAction;
+import com.rapidminer.gui.popup.PopupAction.PopupPosition;
 import com.rapidminer.gui.new_plotter.listener.events.PlotConfigurationChangeEvent;
 import com.rapidminer.gui.new_plotter.listener.events.PlotConfigurationChangeEvent.PlotConfigurationChangeType;
 import com.rapidminer.gui.new_plotter.templates.style.ColorScheme;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.ResourceLabel;
-import com.rapidminer.gui.tools.SwingTools;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 
 
 /**
  * @author Nils Woehler
- *
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 
 	private static final long serialVersionUID = 1L;
@@ -139,10 +138,6 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 							getPlotConfiguration().setTitleText(null);
 						}
 					}
-
-					if (newTitle.equals("Iris") && SwingTools.isControlOrMetaDown(e) && e.getKeyCode() == KeyEvent.VK_D) {
-						startAnimation();
-					}
 				}
 
 				@Override
@@ -205,11 +200,12 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 
 		// add legend popup button
 		{
-			JLabel axisStyleConfigureLabel = new ResourceLabel("plotter.configuration_dialog.global_config_panel.axis_style");
+			JLabel axisStyleConfigureLabel = new ResourceLabel(
+					"plotter.configuration_dialog.global_config_panel.axis_style");
 
-			JToggleButton axisStyleConfigureButton = new JToggleButton(new PopupAction(true,
-					"plotter.configuration_dialog.open_popup", axisConfigurationContainer,
-					PopupAction.PopupPosition.HORIZONTAL));
+			JToggleButton axisStyleConfigureButton = new JToggleButton(
+					new PopupAction(true, "plotter.configuration_dialog.open_popup", axisConfigurationContainer,
+							PopupAction.PopupPosition.HORIZONTAL));
 			axisStyleConfigureLabel.setLabelFor(axisStyleConfigureButton);
 
 			addTwoComponentRow(this, axisStyleConfigureLabel, axisStyleConfigureButton);
@@ -245,16 +241,16 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 				}
 			});
 
-			JButton colorConfigButton = new JButton(new ResourceAction(true,
-					"plotter.configuration_dialog.open_color_scheme_dialog") {
+			JButton colorConfigButton = new JButton(
+					new ResourceAction(true, "plotter.configuration_dialog.open_color_scheme_dialog") {
 
-				private static final long serialVersionUID = 1L;
+						private static final long serialVersionUID = 1L;
 
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					createColorSchemeDialog();
-				}
-			});
+						@Override
+						public void loggedActionPerformed(ActionEvent e) {
+							createColorSchemeDialog();
+						}
+					});
 
 			addThreeComponentRow(this, colorConfigureLabel, colorSchemesComboBox, colorConfigButton);
 
@@ -265,17 +261,17 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 			plotBackGroundColorLabel = new ResourceLabel(
 					"plotter.configuration_dialog.global_config_panel.select_plot_background_color");
 
-			plotBackgroundColorChooserButton = new JButton(new ResourceAction(true,
-					"plotter.configuration_dialog.select_plot_color") {
+			plotBackgroundColorChooserButton = new JButton(
+					new ResourceAction(true, "plotter.configuration_dialog.select_plot_color") {
 
-				private static final long serialVersionUID = 1L;
+						private static final long serialVersionUID = 1L;
 
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					createPlotBackgroundColorDialog();
+						@Override
+						public void loggedActionPerformed(ActionEvent e) {
+							createPlotBackgroundColorDialog();
 
-				}
-			});
+						}
+					});
 			plotBackGroundColorLabel.setLabelFor(plotBackgroundColorChooserButton);
 
 			addTwoComponentRow(this, plotBackGroundColorLabel, plotBackgroundColorChooserButton);
@@ -287,16 +283,16 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 			frameBackGroundColorLabel = new ResourceLabel(
 					"plotter.configuration_dialog.global_config_panel.select_frame_background_color");
 
-			frameBackgroundColorChooserButton = new JButton(new ResourceAction(true,
-					"plotter.configuration_dialog.select_frame_color") {
+			frameBackgroundColorChooserButton = new JButton(
+					new ResourceAction(true, "plotter.configuration_dialog.select_frame_color") {
 
-				private static final long serialVersionUID = 1L;
+						private static final long serialVersionUID = 1L;
 
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					createFrameBackgroundColorDialog();
-				}
-			});
+						@Override
+						public void loggedActionPerformed(ActionEvent e) {
+							createFrameBackgroundColorDialog();
+						}
+					});
 			frameBackGroundColorLabel.setLabelFor(frameBackgroundColorChooserButton);
 
 			addTwoComponentRow(this, frameBackGroundColorLabel, frameBackgroundColorChooserButton);
@@ -321,49 +317,6 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 
 	}
 
-	private void startAnimation() {
-		StaticDebug.debug("Starting animation");
-
-		// PlotConfiguration plotConfig = getPlotConfiguration();
-		//
-		// DataTable dataTable;
-		// // retrieve data for showing example data
-		// try {
-		// ExampleSet exampleSet = (ExampleSet) ((IOObjectEntry) new
-		// RepositoryLocation("//Samples/data/Iris").locateEntry()).retrieveData(null);
-		// dataTable = new DataTableExampleSetAdapter(exampleSet, null);
-		// } catch (MalformedRepositoryLocationException e) {
-		// return;
-		// } catch (RepositoryException e) {
-		// return;
-		// }
-		//
-		// if (dataTable == null || dataTable.getColumnNumber() < 2) {
-		// return;
-		// }
-		//
-		// // domain and y column
-		// DataTableColumn domainColumn = new DataTableColumn(dataTable, 0);
-		// DataTableColumn mainColumn = new DataTableColumn(dataTable, 1);
-		//
-		// plotConfig.getDomainConfigManager().setDataTableColumn(domainColumn);
-		//
-		// RangeAxisConfig rangeAxis = new RangeAxisConfig("", plotConfig);
-		// DefaultValueSource valueSource = new DefaultValueSource(plotConfig, mainColumn, null,
-		// false);
-		// try {
-		// rangeAxis.addValueSource(valueSource);
-		// } catch (ChartConfigurationException e) {
-		// return;
-		// }
-		// plotConfig.addRangeAxisConfig(rangeAxis);
-		//
-		// DefaultDimensionConfig colorDimension = new DefaultDimensionConfig(plotConfig,
-		// mainColumn, PlotDimension.COLOR);
-		// plotConfig.setDimensionConfig(PlotDimension.COLOR, colorDimension);
-
-	}
-
 	@Override
 	protected void adaptGUI() {
 
@@ -379,7 +332,8 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 		// init title font button
 		Font titleFont = getPlotConfiguration().getTitleFont();
 		if (titleFont != null) {
-			titleTextField.setFont(new Font(titleFont.getFamily(), titleFont.getStyle(), fontSize));
+			titleTextField
+					.setFont(FontTools.getFont(titleFont.getFamily(), titleFont.getStyle(), fontSize));
 		}
 
 		plotOrientationChanged(getPlotConfiguration().getOrientation());
@@ -439,8 +393,8 @@ public class GlobalConfigurationPanel extends AbstractConfigurationPanel {
 	}
 
 	private void createColorSchemeDialog() {
-		ColorSchemeDialog colorSchemeDialog = new ColorSchemeDialog(this,
-				"plotter.configuration_dialog.color_scheme_dialog", getPlotConfiguration());
+		ColorSchemeDialog colorSchemeDialog = new ColorSchemeDialog(this, "plotter.configuration_dialog.color_scheme_dialog",
+				getPlotConfiguration());
 		colorSchemeDialog.setVisible(true);
 	}
 

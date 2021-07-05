@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -48,7 +48,7 @@ public class MultiInputPortPairExtender extends MultiPortPairExtender<OutputPort
 	 */
 	public void passDataThrough(int fromIndex) {
 		for (MultiPortPair mpp : getManagedPairs()) {
-			mpp.singlePort.deliver(mpp.multiPorts.get(fromIndex).getAnyDataOrNull());
+			mpp.singlePort.deliver(mpp.multiPorts.get(fromIndex).getRawData());
 		}
 	}
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -25,6 +25,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
@@ -36,6 +37,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import java.awt.font.TextAttribute;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
@@ -44,7 +46,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
-
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -62,11 +63,13 @@ import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultEditorKit;
 import javax.swing.text.DocumentFilter;
 import javax.swing.text.html.HTMLDocument;
+import javax.swing.text.html.HTMLEditorKit;
 
 import com.rapidminer.gui.ApplicationFrame;
 import com.rapidminer.gui.flow.processrendering.annotations.event.AnnotationEventHook;
@@ -83,12 +86,14 @@ import com.rapidminer.gui.flow.processrendering.draw.ProcessDrawUtils;
 import com.rapidminer.gui.flow.processrendering.model.ProcessRendererModel;
 import com.rapidminer.gui.flow.processrendering.view.ProcessRendererView;
 import com.rapidminer.gui.flow.processrendering.view.RenderPhase;
+import com.rapidminer.gui.tools.EditableLinkController;
 import com.rapidminer.gui.tools.Ionicon;
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.operator.ExecutionUnit;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
+import com.rapidminer.tools.RMUrlHandler;
 
 
 /**
@@ -109,6 +114,7 @@ public final class AnnotationsDecorator {
 
 	/** icon depicting annotations on an operator */
 	private static final ImageIcon IMAGE_ANNOTATION = SwingTools.createIcon("16/note_pinned.png");
+	private static final ImageIcon IMAGE_ANNOTATION_ZOOMED = SwingTools.createIcon("32/note_pinned.png");
 
 	/** the width of the edit panel above/below the annotation editor */
 	private static final int EDIT_PANEL_WIDTH = 190;
@@ -330,10 +336,15 @@ public final class AnnotationsDecorator {
 				return;
 			}
 			Rectangle2D frame = rendererModel.getOperatorRect(operator);
-			int xOffset = (IMAGE_ANNOTATION.getIconWidth() + 2) * 2;
-			ProcessDrawUtils.getIcon(operator, IMAGE_ANNOTATION).paintIcon(null, g2,
-					(int) (frame.getX() + frame.getWidth() - xOffset),
-					(int) (frame.getY() + frame.getHeight() - IMAGE_ANNOTATION.getIconHeight() - 1));
+			int iconSize = 16;
+			int xOffset = (iconSize + 2) * 2;
+			int iconX = (int) (frame.getX() + frame.getWidth() - xOffset);
+			int iconY = (int) (frame.getY() + frame.getHeight() - iconSize - 1);
+			ImageIcon icon = ProcessDrawUtils.getIcon(operator, rendererModel.getZoomFactor() <= 1d ? IMAGE_ANNOTATION : IMAGE_ANNOTATION_ZOOMED);
+			RenderingHints originalRenderingHints = g2.getRenderingHints();
+			g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g2.drawImage(icon.getImage(), iconX, iconY, iconSize, iconSize, null);
+			g2.setRenderingHints(originalRenderingHints);
 		}
 	};
 
@@ -446,13 +457,25 @@ public final class AnnotationsDecorator {
 		// JEditorPane to edit the comment string
 		editPane = new JEditorPane("text/html", "");
 		editPane.setBorder(null);
+		editPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
 		int paneX = (int) (loc.getX() * rendererModel.getZoomFactor());
 		int paneY = (int) (loc.getY() * rendererModel.getZoomFactor());
 		int index = view.getModel().getProcessIndex(selected.getProcess());
 		Point absolute = ProcessDrawUtils.convertToAbsoluteProcessPoint(new Point(paneX, paneY), index, rendererModel);
+		if (absolute == null) {
+			return;
+		}
 		editPane.setBounds((int) absolute.getX(), (int) absolute.getY(),
 				(int) (loc.getWidth() * rendererModel.getZoomFactor()),
 				(int) (loc.getHeight() * rendererModel.getZoomFactor()));
+		float originalSize = AnnotationDrawUtils.ANNOTATION_FONT.getSize();
+		// without this, scaling is off even more when zooming out..
+		if (rendererModel.getZoomFactor() < 1.0d) {
+			originalSize -= 1f;
+		}
+		float fontSize = (float) (originalSize * rendererModel.getZoomFactor());
+		Font annotationFont = AnnotationDrawUtils.ANNOTATION_FONT.deriveFont(fontSize);
+		editPane.setFont(annotationFont);
 		editPane.setText(AnnotationDrawUtils.createStyledCommentString(selected));
 		// use proxy for paste actions to trigger reload of editor after paste
 		Action pasteFromClipboard = editPane.getActionMap().get(PASTE_FROM_CLIPBOARD_ACTION_NAME);
@@ -581,6 +604,22 @@ public final class AnnotationsDecorator {
 			}
 
 		});
+		// allow hyperlink activation in edit mode
+		// do this by removing original LinkController listener that prevents it and then add our own that allows it
+		MouseListener originalLinkControllerListener = null;
+		for (MouseListener mouseListener : editPane.getMouseListeners()) {
+			if (mouseListener instanceof HTMLEditorKit.LinkController) {
+				originalLinkControllerListener = mouseListener;
+			}
+		}
+		editPane.removeMouseListener(originalLinkControllerListener);
+		editPane.addMouseListener(new EditableLinkController());
+		editPane.addHyperlinkListener(e -> {
+			if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
+				RMUrlHandler.handleUrl(e.getDescription());
+			}
+		});
+
 		editPane.getDocument().addDocumentListener(new DocumentListener() {
 
 			@Override
@@ -742,6 +781,7 @@ public final class AnnotationsDecorator {
 			final Icon icon = SwingTools.createIconFromColor(color.getColor(), Color.BLACK, 16, 16,
 					new Rectangle2D.Double(1, 1, 14, 14));
 			colChangeButton.setIcon(icon);
+			colChangeButton.setToolTipText(color.getKey());
 			colChangeButton.addActionListener(new ActionListener() {
 
 				@Override
@@ -883,8 +923,8 @@ public final class AnnotationsDecorator {
 
 		boolean overflowing = false;
 		int prefHeight = AnnotationDrawUtils.getContentHeight(
-				AnnotationDrawUtils.createStyledCommentString(comment, selected.getStyle()), (int) newLoc.getWidth());
-		if (prefHeight > newLoc.getHeight()) {
+				AnnotationDrawUtils.createStyledCommentString(comment, selected.getStyle()), (int) newLoc.getWidth(), AnnotationDrawUtils.ANNOTATION_FONT);
+		if (prefHeight > Math.ceil(newLoc.getHeight())) {
 			overflowing = true;
 		}
 		selected.setOverflowing(overflowing);
@@ -971,23 +1011,36 @@ public final class AnnotationsDecorator {
 	 *            if {@code false} it is treated as relative to the current process
 	 */
 	private void updateEditPanelPosition(final Rectangle2D loc, final boolean absolute) {
-		int panelX = (int) (loc.getCenterX() * rendererModel.getZoomFactor() - EDIT_PANEL_WIDTH / 2);
-		int panelY = (int) (loc.getY() * rendererModel.getZoomFactor() - EDIT_PANEL_HEIGHT - BUTTON_PANEL_GAP);
-		// if panel would be outside process renderer, fix it
-		if (panelX < WorkflowAnnotation.MIN_X) {
-			panelX = WorkflowAnnotation.MIN_X;
-		}
-		if (panelY < 0) {
-			panelY = (int) (loc.getMaxY() * rendererModel.getZoomFactor()) + BUTTON_PANEL_GAP;
-		}
-		// last fallback is cramped to the bottom. If that does not fit either, don't care
-		if (panelY + EDIT_PANEL_HEIGHT > view.getSize().getHeight() - BUTTON_PANEL_GAP * 2) {
-			panelY = (int) (loc.getMaxY() * rendererModel.getZoomFactor());
-		}
-		int index = view.getModel().getProcessIndex(model.getSelected().getProcess());
 		if (absolute) {
+			int panelX = (int) (loc.getCenterX() - EDIT_PANEL_WIDTH / 2);
+			int panelY = (int) (loc.getY() - EDIT_PANEL_HEIGHT - BUTTON_PANEL_GAP);
+			// if panel would be outside process renderer, fix it
+			if (panelX < WorkflowAnnotation.MIN_X) {
+				panelX = WorkflowAnnotation.MIN_X;
+			}
+			if (panelY < 0) {
+				panelY = (int) loc.getMaxY() + BUTTON_PANEL_GAP;
+			}
+			// last fallback is cramped to the bottom. If that does not fit either, don't care
+			if (panelY + EDIT_PANEL_HEIGHT > view.getSize().getHeight() - BUTTON_PANEL_GAP * 2) {
+				panelY = (int) loc.getMaxY();
+			}
 			editPanel.setBounds(panelX, panelY, EDIT_PANEL_WIDTH, EDIT_PANEL_HEIGHT);
 		} else {
+			int panelX = (int) (loc.getCenterX() * rendererModel.getZoomFactor() - EDIT_PANEL_WIDTH / 2);
+			int panelY = (int) (loc.getY() * rendererModel.getZoomFactor() - EDIT_PANEL_HEIGHT - BUTTON_PANEL_GAP);
+			// if panel would be outside process renderer, fix it
+			if (panelX < WorkflowAnnotation.MIN_X) {
+				panelX = WorkflowAnnotation.MIN_X;
+			}
+			if (panelY < 0) {
+				panelY = (int) (loc.getMaxY() * rendererModel.getZoomFactor()) + BUTTON_PANEL_GAP;
+			}
+			// last fallback is cramped to the bottom. If that does not fit either, don't care
+			if (panelY + EDIT_PANEL_HEIGHT > view.getSize().getHeight() - BUTTON_PANEL_GAP * 2) {
+				panelY = (int) (loc.getMaxY() * rendererModel.getZoomFactor());
+			}
+			int index = view.getModel().getProcessIndex(model.getSelected().getProcess());
 			Point absoluteP = ProcessDrawUtils.convertToAbsoluteProcessPoint(new Point(panelX, panelY), index,
 					rendererModel);
 			editPanel.setBounds((int) absoluteP.getX(), (int) absoluteP.getY(), EDIT_PANEL_WIDTH, EDIT_PANEL_HEIGHT);
@@ -1039,7 +1092,7 @@ public final class AnnotationsDecorator {
 	 * @param width
 	 *            the width of the pane
 	 * @return the preferred height given the current editor pane content or {@code -1} if there was
-	 *         a problem. Value will never exceed {@link WorkflowAnnotation#MAX_HEIGHT}
+	 *         a problem. Value will never exceed {@link ProcessAnnotation#MAX_HEIGHT} or {@link OperatorAnnotation#MAX_HEIGHT}
 	 */
 	private int getContentHeightOfEditor(final int width) {
 		HTMLDocument document = (HTMLDocument) editPane.getDocument();
@@ -1055,10 +1108,16 @@ public final class AnnotationsDecorator {
 
 		int maxHeight = model.getSelected() instanceof ProcessAnnotation ? ProcessAnnotation.MAX_HEIGHT
 				: OperatorAnnotation.MAX_HEIGHT;
-		return Math.min(
+		// factor OUT zoom
+		int result = Math.min(
 				AnnotationDrawUtils.getContentHeight(
-						AnnotationDrawUtils.createStyledCommentString(comment, model.getSelected().getStyle()), width),
+						AnnotationDrawUtils.createStyledCommentString(comment, model.getSelected().getStyle()),
+						(int) (width * (1 / rendererModel.getZoomFactor())), AnnotationDrawUtils.ANNOTATION_FONT),
 				maxHeight);
+		result *= rendererModel.getZoomFactor();
+		// extra pixel because not everything is pixel perfect here
+		result += 1;
+		return result;
 	}
 
 }

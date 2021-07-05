@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -41,14 +41,17 @@ public class ShowProcessInRepositoryAction extends ResourceActionAdapter {
 	public ShowProcessInRepositoryAction(RepositoryTree tree) {
 		super(true, "link");
 		this.tree = tree;
-		setCondition(PROCESS_SAVED, ConditionalAction.MANDATORY);
+		setCondition(PROCESS_HAS_REPOSITORY_LOCATION, ConditionalAction.MANDATORY);
 	}
 
 	@Override
-	public void actionPerformed(ActionEvent e) {
+	public void loggedActionPerformed(ActionEvent e) {
 		if (RapidMinerGUI.getMainFrame().getProcess() != null) {
 			RepositoryLocation repoLoc = RapidMinerGUI.getMainFrame().getProcess().getRepositoryLocation();
 			if (repoLoc != null) {
+				// scroll to location
+				// twice because otherwise the repository browser selects the parent...
+				tree.expandAndSelectIfExists(repoLoc);
 				tree.expandAndSelectIfExists(repoLoc);
 			}
 		}

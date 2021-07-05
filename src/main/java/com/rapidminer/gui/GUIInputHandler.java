@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -41,7 +41,7 @@ public class GUIInputHandler implements InputHandler {
 		final JPasswordField passwordField = new JPasswordField();
 		JOptionPane jop = new JOptionPane(new Object[] { messageText, passwordField }, JOptionPane.QUESTION_MESSAGE,
 				JOptionPane.OK_CANCEL_OPTION);
-		JDialog dialog = jop.createDialog("Auhtentication required");
+		JDialog dialog = jop.createDialog("Authentication required");
 		dialog.addComponentListener(new ComponentAdapter() {
 
 			@Override

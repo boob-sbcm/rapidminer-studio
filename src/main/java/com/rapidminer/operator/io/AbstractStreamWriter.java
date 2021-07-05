@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -30,10 +30,8 @@ import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.nio.file.FileObject;
 import com.rapidminer.operator.nio.file.FileOutputPortHandler;
 import com.rapidminer.operator.ports.OutputPort;
-import com.rapidminer.operator.ports.Port;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeFile;
-import com.rapidminer.parameter.PortProvider;
 
 
 /**
@@ -100,13 +98,7 @@ public abstract class AbstractStreamWriter extends AbstractWriter<ExampleSet> {
 	 * depends on whether or not {@link #fileOutputPort} is connected.
 	 */
 	protected ParameterType makeFileParameterType() {
-		return FileOutputPortHandler.makeFileParameterType(this, getFileParameterName(), new PortProvider() {
-
-			@Override
-			public Port getPort() {
-				return fileOutputPort;
-			}
-		}, getFileExtensions());
+		return FileOutputPortHandler.makeFileParameterType(this, getFileParameterName(), () -> fileOutputPort, getFileExtensions());
 	}
 
 	/**

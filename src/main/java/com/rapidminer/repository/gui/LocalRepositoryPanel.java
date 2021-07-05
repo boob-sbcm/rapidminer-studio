@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -54,6 +54,7 @@ import javax.swing.event.DocumentListener;
 /**
  * @author Simon Fischer
  */
+@Deprecated
 public class LocalRepositoryPanel extends JPanel implements RepositoryConfigurationPanel {
 
 	private static final long serialVersionUID = 1L;
@@ -119,7 +120,7 @@ public class LocalRepositoryPanel extends JPanel implements RepositoryConfigurat
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				File file = SwingTools.chooseFile(LocalRepositoryPanel.this, null, true, true, (String) null, null);
 				if (file != null) {
 					fileField.setText(file.toString());
@@ -328,7 +329,7 @@ public class LocalRepositoryPanel extends JPanel implements RepositoryConfigurat
 			if (repo instanceof LocalRepository) {
 				if (((LocalRepository) repo).getRoot().equals(file)) {
 					throw new RepositoryException(I18N.getMessage(I18N.getErrorBundle(),
-							"repository.repository_creation_duplicate_location"));
+							"repository.repository_creation_duplicate_location", repo.getName()));
 				}
 			}
 			if (repo.getName().equals(alias)) {

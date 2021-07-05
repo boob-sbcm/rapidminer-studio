@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,17 +18,32 @@
 */
 package com.rapidminer.tools;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import com.rapidminer.Process;
+import com.rapidminer.io.process.ProcessOriginProcessXMLFilter;
+import com.rapidminer.io.process.ProcessOriginProcessXMLFilter.ProcessOriginState;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorChain;
 import com.rapidminer.operator.ProcessRootOperator;
 import com.rapidminer.operator.ProcessSetupError;
+import com.rapidminer.operator.UndefinedParameterSetupError;
+import com.rapidminer.operator.UserData;
 import com.rapidminer.operator.ports.Port;
 import com.rapidminer.operator.ports.metadata.InputMissingMetaDataError;
+import com.rapidminer.operator.preprocessing.filter.attributes.SubsetAttributeFilter;
+import com.rapidminer.operator.tools.AttributeSubsetSelector;
 import com.rapidminer.parameter.ParameterType;
-import com.rapidminer.parameter.ParameterTypeAttribute;
+import com.rapidminer.repository.Repository;
+import com.rapidminer.repository.RepositoryException;
+import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryManager;
+import com.rapidminer.repository.resource.ResourceRepository;
 import com.rapidminer.tools.container.Pair;
 
 
@@ -40,6 +55,33 @@ import com.rapidminer.tools.container.Pair;
  *
  */
 public final class ProcessTools {
+
+	/**
+	 * @since 9.6
+	 */
+	private static final String KEY_PARENT_PROCESS = "parent_process";
+
+	/**
+	 * @author Jan Czogalla
+	 * @since 9.6
+	 */
+	private static class ParentUserData implements UserData<Object> {
+
+		private Process parent;
+
+		public ParentUserData(Process parent) {
+			this.parent = parent;
+		}
+
+		@Override
+		public UserData<Object> copyUserData(Object newParent) {
+			return this;
+		}
+
+		public Process getParent() {
+			return parent;
+		}
+	}
 
 	/**
 	 * Private constructor which throws if called.
@@ -95,39 +137,18 @@ public final class ProcessTools {
 	 *
 	 * @param process
 	 *            the process in question
-	 * @return the first {@link Port} found if the process contains at least one operator with an
+	 * @return the first {@link Port} along with it's error that is found if the process contains at least one operator with an
 	 *         input port which is not connected; {@code null} otherwise
 	 */
-	public static Port getPortWithoutMandatoryConnection(final Process process) {
+	public static Pair<Port, ProcessSetupError> getPortWithoutMandatoryConnection(final Process process) {
 		if (process == null) {
 			throw new IllegalArgumentException("process must not be null!");
 		}
-
-		for (Operator op : process.getAllOperators()) {
-			// / if operator or one of its parents is disabled, we don't care
-			if (isSuperOperatorDisabled(op)) {
-				continue;
-			}
-
-			// look for matching errors. We can only identify this via metadata errors
-			for (ProcessSetupError error : op.getErrorList()) {
-				// the error list of an OperatorChain contains all errors of its children
-				// we only want errors for the current operator however, so skip otherwise
-				if (!op.equals(error.getOwner().getOperator())) {
-					continue;
-				}
-				if (error instanceof InputMissingMetaDataError) {
-					InputMissingMetaDataError err = (InputMissingMetaDataError) error;
-					// as we don't know what will be sent at runtime, we only look for unconnected
-					if (!err.getPort().isConnected()) {
-						return err.getPort();
-					}
-				}
-			}
-		}
-
-		// no port with missing input and no connection found
-		return null;
+		return process.getAllOperators().stream()
+				// if operator or one of its parents is disabled, we don't care
+				.filter(operator -> !isSuperOperatorDisabled(operator))
+				.map(ProcessTools::getMissingPortConnection).filter(Objects::nonNull)
+				.findFirst().orElse(null);
 	}
 
 	/**
@@ -141,21 +162,19 @@ public final class ProcessTools {
 	 *
 	 * @param operator
 	 *            the operator for which to check for unconnected mandatory ports
-	 * @return the first {@link Port} found if the operator has at least one input port which is not
+	 * @return the first {@link Port} along with it's error that is found if the operator has at least one input port which is not
 	 *         connected; {@code null} otherwise
 	 */
-	public static Port getMissingPortConnection(Operator operator) {
-		// look for matching errors. We can only identify this via metadata errors
-		for (ProcessSetupError error : operator.getErrorList()) {
-			if (error instanceof InputMissingMetaDataError) {
-				InputMissingMetaDataError err = (InputMissingMetaDataError) error;
+	public static Pair<Port, ProcessSetupError> getMissingPortConnection(Operator operator) {
+		return operator.getErrorList().stream()
+				// the error list of an OperatorChain contains all errors of its children
+				// we only want errors for the current operator however, so skip otherwise
+				.filter(e -> e.getOwner().getOperator() == operator)
+				// look for matching errors. We can only identify this via metadata errors
+				.filter(e -> e instanceof InputMissingMetaDataError)
 				// as we don't know what will be sent at runtime, we only look for unconnected
-				if (!err.getPort().isConnected()) {
-					return err.getPort();
-				}
-			}
-		}
-		return null;
+				.filter(e -> !((InputMissingMetaDataError) e).getPort().isConnected())
+				.findFirst().map(e -> new Pair<>(((InputMissingMetaDataError) e).getPort(), e)).orElse(null);
 	}
 
 	/**
@@ -173,22 +192,7 @@ public final class ProcessTools {
 		if (process == null) {
 			throw new IllegalArgumentException("process must not be null!");
 		}
-
-		for (Operator op : process.getAllOperators()) {
-			// if operator or one of its parents is disabled, we don't care
-			if (isSuperOperatorDisabled(op)) {
-				continue;
-			}
-
-			// check all parameters and see if they have no value and are non optional
-			ParameterType param = getMissingMandatoryParameter(op);
-			if (param != null) {
-				return new Pair<>(op, param);
-			}
-		}
-
-		// no operator with missing mandatory parameter found
-		return null;
+		return getOperatorWithoutMandatoryParameter(process.getAllOperators());
 	}
 
 	/**
@@ -215,22 +219,198 @@ public final class ProcessTools {
 
 		// if it has children check them
 		if (operator instanceof OperatorChain) {
-			for (Operator op : ((OperatorChain) operator).getAllInnerOperators()) {
-				// if operator or one of its parents is disabled, we don't care
-				if (isSuperOperatorDisabled(op)) {
-					continue;
-				}
-
-				// check all parameters and see if they have no value and are non optional
-				param = getMissingMandatoryParameter(op);
-				if (param != null) {
-					return new Pair<>(op, param);
-				}
-			}
+			return getOperatorWithoutMandatoryParameter(((OperatorChain) operator).getAllInnerOperators());
 		}
 
 		// no operator with missing mandatory parameter found
 		return null;
+	}
+
+	/**
+	 * Checks whether one of the given operators has a mandatory parameter which
+	 * has no value and no default value. Both the operator and the parameter are then returned. If
+	 * no such operator can be found, returns {@code null}.
+	 *
+	 * @param operators
+	 *            the operators in question
+	 * @return the first {@link Operator} found if one of the given operators has a
+	 *         mandatory parameter which is neither set nor has a default value; {@code null} otherwise
+	 * @since 9.3
+	 */
+	private static Pair<Operator, ParameterType> getOperatorWithoutMandatoryParameter(Collection<Operator> operators) {
+		return operators.stream()
+				// if operator or one of its parents is disabled, we don't care
+				.filter(operator -> !isSuperOperatorDisabled(operator))
+				.map(op -> {
+					// check all parameter related setup errors
+					ParameterType param = getMissingMandatoryParameter(op);
+					return param == null ? null : new Pair<>(op, param);
+				}).filter(Objects::nonNull)
+				.findFirst().orElse(null);
+	}
+
+	/**
+	 * Makes the "subset" parameter of the attribute selector the primary parameter. If the given list does not contain that parameter type, nothing is done.
+	 *
+	 * @param parameterTypes
+	 * 		the list of parameter types which contain the {@link AttributeSubsetSelector#getParameterTypes()}. If {@code null} or empty, the input is returned
+	 * @param primary
+	 * 		if {@code true} the subset parameter will become a primary parameter type, otherwise it will become a non-primary parameter type
+	 * @return the original input
+	 * @since 8.2.0
+	 */
+	public static List<ParameterType> setSubsetSelectorPrimaryParameter(final List<ParameterType> parameterTypes, final boolean primary) {
+		if (parameterTypes == null || parameterTypes.isEmpty()) {
+			return parameterTypes;
+		}
+
+		// look for attribute "subset" parameter, and make it primary if found
+		for (ParameterType type : parameterTypes) {
+			if (SubsetAttributeFilter.PARAMETER_ATTRIBUTES.equals(type.getKey())) {
+				type.setPrimary(primary);
+				break;
+			}
+		}
+
+		return parameterTypes;
+	}
+
+	/**
+	 * Tags the given process with an {@link ProcessOriginState origin} if possible. If the {@link Process} is not stored
+	 * in a {@link Repository}, this does nothing. If it is stored in a {@link ResourceRepository}, it will be tagged
+	 * with {@link ProcessOriginState#GENERATED_SAMPLE}. Otherwise a lookup of
+	 * {@link RepositoryManager#getSpecialRepositoryOrigin(Repository)} is performed.
+	 *
+	 * @param process
+	 * 		the process to be tagged with an origin
+	 * @since 9.0.0
+	 */
+	public static void setProcessOrigin(Process process) {
+		RepositoryLocation repositoryLocation = process.getRepositoryLocation();
+		if (repositoryLocation == null) {
+			return;
+		}
+		Repository repository = null;
+		try {
+			repository = repositoryLocation.getRepository();
+		} catch (RepositoryException e) {
+			// nothing to do here
+			return;
+		}
+		if (repository == null) {
+			return;
+		}
+		ProcessOriginState origin;
+		// resource based repos cannot be created in user interface; tag as sample
+		if (repository instanceof ResourceRepository) {
+			origin = ProcessOriginState.GENERATED_SAMPLE;
+		} else {
+			origin = RepositoryManager.getInstance(null).getSpecialRepositoryOrigin(repository);
+		}
+		ProcessOriginProcessXMLFilter.setProcessOriginState(process, origin);
+	}
+
+	/**
+	 * Marks the given process with its parent to allow for better connection caching
+	 *
+	 * @param process
+	 * 		the process to be tagged
+	 * @param parentProcess
+	 * 		the process' parent process
+	 * @see com.rapidminer.connection.adapter.ConnectionAdapterHandler ConnectionAdapterHandler
+	 * @since 9.6
+	 */
+	public static void setParentProcess(Process process, Process parentProcess) {
+		if (parentProcess == null) {
+			return;
+		}
+		UserData<Object> parentData = parentProcess.getRootOperator().getUserData(KEY_PARENT_PROCESS);
+		if (parentData != null) {
+			process.getRootOperator().setUserData(KEY_PARENT_PROCESS, parentData);
+			return;
+		}
+		process.getRootOperator().setUserData(KEY_PARENT_PROCESS, new ParentUserData(parentProcess));
+	}
+
+	/**
+	 * Gets the parent process of the specified process. Will return the argument if there is no user data indicating
+	 * another parent process.
+	 *
+	 * @param process
+	 * 		the process whose parent should be retrieved
+	 * @return the process' parent or the process itself if there is no parent
+	 * @since 9.6
+	 */
+	public static Process getParentProcess(Process process) {
+		if (process == null) {
+			return null;
+		}
+		UserData<Object> parentData = process.getRootOperator().getUserData(KEY_PARENT_PROCESS);
+		if (parentData instanceof ParentUserData) {
+			return ((ParentUserData) parentData).getParent();
+		}
+		return process;
+	}
+
+	/**
+	 * Calculates a new name based on the already known names. Will append a number in parenthesis if it is a duplicate.
+	 *
+	 * @param knownNames
+	 * 		the collection of already known/used names; must not be {@code null}
+	 * @param name
+	 * 		the name to check; must not be {@code null}
+	 * @return the new name; possibly the same as the input; never {@code null}
+	 * @since 9.3
+	 */
+	public static String getNewName(Collection<String> knownNames, String name) {
+		if (!knownNames.contains(name)) {
+			return name;
+		}
+		String baseName = name;
+		int index = baseName.lastIndexOf(" (");
+		int i = 2;
+		if (index >= 0 && baseName.endsWith(")")) {
+			String suffix = baseName.substring(index + 2, baseName.length() - 1);
+			try {
+				i = Integer.parseInt(suffix) + 1;
+				baseName = baseName.substring(0, index);
+				if (!knownNames.contains(baseName)) {
+					return baseName;
+				}
+			} catch (NumberFormatException e) {
+				// not a number; ignore, go with 2
+			}
+		}
+		String newName;
+		do {
+			newName = baseName + " (" + i++ + ')';
+		} while (knownNames.contains(newName));
+		return newName;
+	}
+
+	/**
+	 * Calculates new names based on the already known names and returns a map of the renaming for all names that actually changed.
+	 *
+	 * @param knownNames
+	 * 		the collection of already known/used names; must not be {@code null}
+	 * @param names
+	 * 		the names to check; must not be {@code null} or contain {@code null}
+	 * @return the new names, mapped from old to new; might be empty; never {@code null}
+	 * @since 9.3
+	 * @see #getNewName(Collection, String)
+	 */
+	public static Map<String, String> getNewNames(Collection<String> knownNames, Collection<String> names) {
+		// prevent side effects
+		knownNames = new HashSet<>(knownNames);
+		Map<String, String> nameMap = new LinkedHashMap<>();
+		for (String name : names) {
+			String newName = getNewName(knownNames, name);
+			if (!name.equals(newName)) {
+				nameMap.put(name, newName);
+			}
+			knownNames.add(newName);
+		}
+		return nameMap;
 	}
 
 	/**
@@ -243,18 +423,20 @@ public final class ProcessTools {
 	 *         {@code null} otherwise
 	 */
 	private static ParameterType getMissingMandatoryParameter(Operator operator) {
-		for (String key : operator.getParameters().getKeys()) {
-			ParameterType param = operator.getParameterType(key);
-			if (!param.isOptional()) {
-				if (operator.getParameters().getParameterOrNull(key) == null) {
-					return param;
-				} else if (param instanceof ParameterTypeAttribute
-						&& "".equals(operator.getParameters().getParameterOrNull(key))) {
-					return param;
-				}
-			}
+		List<ProcessSetupError> errorList = operator.getErrorList();
+		if (errorList.isEmpty()) {
+			// make sure that setup errors are calculated
+			operator.checkProperties();
+			errorList = operator.getErrorList();
 		}
-		return null;
+		return errorList.stream()
+				// the error list of an OperatorChain contains all errors of its children
+				// we only want errors for the current operator however, so skip otherwise
+				.filter(pse -> pse.getOwner().getOperator() == operator)
+				// look for matching errors. We can identify this via undefined parameter errors
+				.filter(pse -> pse instanceof UndefinedParameterSetupError)
+				.map(pse -> ((UndefinedParameterSetupError) pse).getKey())
+				.map(operator::getParameterType).findFirst().orElse(null);
 	}
 
 	/**

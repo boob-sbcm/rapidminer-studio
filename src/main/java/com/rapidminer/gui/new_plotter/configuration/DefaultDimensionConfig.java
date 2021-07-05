@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,23 +18,6 @@
 */
 package com.rapidminer.gui.new_plotter.configuration;
 
-import com.rapidminer.datatable.DataTable;
-import com.rapidminer.gui.new_plotter.PlotConfigurationError;
-import com.rapidminer.gui.new_plotter.StaticDebug;
-import com.rapidminer.gui.new_plotter.configuration.DataTableColumn.ValueType;
-import com.rapidminer.gui.new_plotter.configuration.ValueGrouping.GroupingType;
-import com.rapidminer.gui.new_plotter.listener.ValueGroupingListener;
-import com.rapidminer.gui.new_plotter.listener.ValueRangeListener;
-import com.rapidminer.gui.new_plotter.listener.events.DimensionConfigChangeEvent;
-import com.rapidminer.gui.new_plotter.listener.events.DimensionConfigChangeEvent.DimensionConfigChangeType;
-import com.rapidminer.gui.new_plotter.listener.events.ValueGroupingChangeEvent;
-import com.rapidminer.gui.new_plotter.listener.events.ValueGroupingChangeEvent.ValueGroupingChangeType;
-import com.rapidminer.gui.new_plotter.listener.events.ValueRangeChangeEvent;
-import com.rapidminer.gui.new_plotter.listener.events.ValueRangeChangeEvent.ValueRangeChangeType;
-import com.rapidminer.gui.new_plotter.utility.DataStructureUtils;
-import com.rapidminer.gui.new_plotter.utility.NumericalValueRange;
-import com.rapidminer.gui.new_plotter.utility.ValueRange;
-
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.HashSet;
@@ -44,14 +27,30 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.Vector;
 
+import com.rapidminer.datatable.DataTable;
+import com.rapidminer.gui.new_plotter.PlotConfigurationError;
+import com.rapidminer.gui.new_plotter.configuration.DataTableColumn.ValueType;
+import com.rapidminer.gui.new_plotter.configuration.ValueGrouping.GroupingType;
+import com.rapidminer.gui.new_plotter.listener.ValueGroupingListener;
+import com.rapidminer.gui.new_plotter.listener.ValueRangeListener;
+import com.rapidminer.gui.new_plotter.listener.events.DimensionConfigChangeEvent;
+import com.rapidminer.gui.new_plotter.listener.events.DimensionConfigChangeEvent.DimensionConfigChangeType;
+import com.rapidminer.gui.new_plotter.listener.events.ValueGroupingChangeEvent;
+import com.rapidminer.gui.new_plotter.listener.events.ValueRangeChangeEvent;
+import com.rapidminer.gui.new_plotter.listener.events.ValueRangeChangeEvent.ValueRangeChangeType;
+import com.rapidminer.gui.new_plotter.utility.DataStructureUtils;
+import com.rapidminer.gui.new_plotter.utility.NumericalValueRange;
+import com.rapidminer.gui.new_plotter.utility.ValueRange;
+
 
 /**
  * A source for numerical values.
  * 
  * 
  * @author Marius Helf, Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class DefaultDimensionConfig extends AbstractDimensionConfig implements ValueGroupingListener, ValueRangeListener {
 
 	private DataTableColumn dataTableColumn;
@@ -377,12 +376,6 @@ public class DefaultDimensionConfig extends AbstractDimensionConfig implements V
 
 	@Override
 	public void valueGroupingChanged(ValueGroupingChangeEvent change) {
-		StaticDebug.debug(getDimension() + ": Grouping has changed");
-		if (change.getType() == ValueGroupingChangeType.CATEGORICAL) {
-			// if(change.getCategorical() && isLogarithmic()) {
-			// setLogarithmic(false);
-			// }
-		}
 		fireDimensionConfigChanged(new DimensionConfigChangeEvent(this, getDimension(), change));
 	}
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -26,8 +26,9 @@ import java.util.Arrays;
 import java.util.List;
 
 import com.rapidminer.operator.Operator;
-import com.rapidminer.repository.RepositoryLocation;
 import com.rapidminer.tools.Tools;
+import com.rapidminer.tools.usagestats.DefaultUsageLoggable;
+import com.rapidminer.tools.usagestats.UsageLoggable;
 
 
 /**
@@ -36,17 +37,14 @@ import com.rapidminer.tools.Tools;
  * @see com.rapidminer.gui.operatortree.OperatorTree
  * @author Helge Homburg, Michael Knopf, Adrian Wilke
  */
-public class TransferableOperator implements Transferable {
+public class TransferableOperator extends DefaultUsageLoggable implements Transferable {
 
 	public static final DataFlavor LOCAL_TRANSFERRED_OPERATORS_FLAVOR = new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType
 			+ ";class=" + Operator.class.getName(), "RapidMiner operator");
 
-	public static final DataFlavor LOCAL_TRANSFERRED_REPOSITORY_LOCATION_FLAVOR = new DataFlavor(
-			DataFlavor.javaJVMLocalObjectMimeType + ";class=" + RepositoryLocation.class.getName(), "repository location");
+	public static final DataFlavor LOCAL_TRANSFERRED_REPOSITORY_LOCATION_FLAVOR = TransferableRepositoryEntry.LOCAL_TRANSFERRED_REPOSITORY_LOCATION_FLAVOR;
 
-	public static final DataFlavor LOCAL_TRANSFERRED_REPOSITORY_LOCATION_LIST_FLAVOR = new DataFlavor(
-			DataFlavor.javaJVMLocalObjectMimeType + ";class=" + RepositoryLocationList.class.getName(),
-			"repository locations");
+	public static final DataFlavor LOCAL_TRANSFERRED_REPOSITORY_LOCATION_LIST_FLAVOR = TransferableRepositoryEntry.LOCAL_TRANSFERRED_REPOSITORY_LOCATION_LIST_FLAVOR;
 
 	private static final DataFlavor[] DATA_FLAVORS = { TransferableOperator.LOCAL_TRANSFERRED_OPERATORS_FLAVOR,
 			DataFlavor.stringFlavor };
@@ -67,19 +65,23 @@ public class TransferableOperator implements Transferable {
 
 	@Override
 	public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
-
+		if (flavor.equals(UsageLoggable.USAGE_FLAVOR)){
+			// trigger usage stats if applicable
+			logUsageStats();
+			return null;
+		}
 		if (flavor.equals(LOCAL_TRANSFERRED_OPERATORS_FLAVOR)) {
 			return this.clonedOperators;
 		}
 		if (flavor.equals(DataFlavor.stringFlavor)) {
 			StringBuilder b = new StringBuilder();
 			for (Operator op : clonedOperators) {
-				b.append(op.getXML(false));
+				// we cannot encrypt anything when copying to clipboard (otherwise nobody we share the process with could decrypt it)
+				b.append(op.getXML(false, null));
 			}
 			return b.toString();
-		} else {
-			throw new UnsupportedFlavorException(flavor);
 		}
+		throw new UnsupportedFlavorException(flavor);
 	}
 
 	@Override
@@ -98,4 +100,5 @@ public class TransferableOperator implements Transferable {
 	protected Operator[] getOperators() {
 		return this.originalOperators;
 	}
+
 }

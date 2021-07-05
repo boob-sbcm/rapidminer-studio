@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -38,6 +38,7 @@ import javax.swing.event.ListSelectionListener;
 import com.rapidminer.gui.look.Colors;
 import com.rapidminer.gui.processeditor.results.ResultDisplayTools;
 import com.rapidminer.gui.tools.ExtendedJScrollPane;
+import com.rapidminer.gui.tools.MenuShortcutJList;
 import com.rapidminer.gui.tools.ResourceLabel;
 import com.rapidminer.operator.IOContainer;
 import com.rapidminer.operator.performance.PerformanceCriterion;
@@ -107,7 +108,7 @@ public class PerformanceVectorViewer extends JPanel {
 		criteriaNameList.toArray(criteriaNames);
 
 		// selection list
-		final JList<String> criteriaList = new JList<String>(criteriaNames) {
+		final JList<String> criteriaList = new MenuShortcutJList<String>(criteriaNames, false) {
 
 			private static final long serialVersionUID = 3031125186920370793L;
 

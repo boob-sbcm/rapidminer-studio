@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,18 +18,17 @@
 */
 package com.rapidminer.gui.properties.celleditors.value;
 
+import java.awt.Component;
+import java.awt.event.ActionEvent;
+import javax.swing.AbstractCellEditor;
+import javax.swing.JButton;
+import javax.swing.JTable;
+
 import com.rapidminer.gui.properties.MatrixPropertyDialog;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.parameter.ParameterTypeMatrix;
 import com.rapidminer.tools.math.StringToMatrixConverter;
-
-import java.awt.Component;
-import java.awt.event.ActionEvent;
-
-import javax.swing.AbstractCellEditor;
-import javax.swing.JButton;
-import javax.swing.JTable;
 
 
 /**
@@ -52,7 +51,7 @@ public class MatrixValueCellEditor extends AbstractCellEditor implements Propert
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			MatrixPropertyDialog dialog = new MatrixPropertyDialog(type, matrix, operator);
 			dialog.setVisible(true);
 			if (dialog.isOk()) {
@@ -118,5 +117,10 @@ public class MatrixValueCellEditor extends AbstractCellEditor implements Propert
 	@Override
 	public boolean rendersLabel() {
 		return false;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 }

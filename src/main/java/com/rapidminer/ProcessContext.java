@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -235,12 +235,17 @@ public class ProcessContext extends AbstractObservable<ProcessContext> implement
 	}
 
 	/**
-	 * This returns all loaded OperatorLibries that should be used within this process.
+	 * @deprecated since 9.7, but has never done anything even before
 	 */
+	@Deprecated
 	public List<OperatorLibrary> getOperatorLibraries() {
 		return Collections.emptyList();
 	}
 
+	/**
+	 * @deprecated since 9.7, but has never done anything even before
+	 */
+	@Deprecated
 	public void addOperatorLibrary(OperatorLibrary library, String location) {
 		libraryLocations.add(new Pair<>(library, location));
 		try {

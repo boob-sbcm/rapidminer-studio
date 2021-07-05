@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -27,6 +27,7 @@ import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.set.ConditionedExampleSet;
 import com.rapidminer.example.set.NoMissingAttributeValueCondition;
+import com.rapidminer.example.set.RemappedExampleSet;
 import com.rapidminer.example.table.AttributeFactory;
 import com.rapidminer.example.table.NominalMapping;
 import com.rapidminer.operator.AbstractModel;
@@ -75,12 +76,13 @@ public class ClusterModel extends AbstractModel implements ClusterModelInterface
 
 	@Override
 	public ExampleSet apply(ExampleSet exampleSet) throws OperatorException {
-		exampleSet = (ExampleSet) exampleSet.clone();
 		OperatorProgress progress = null;
 		if (getShowProgress() && getOperator() != null && getOperator().getProgress() != null) {
 			progress = getOperator().getProgress();
 			progress.setTotal(100);
 		}
+
+		exampleSet = RemappedExampleSet.create(exampleSet, getTrainingHeader(), false, true);
 
 		Attributes attributes = exampleSet.getAttributes();
 
@@ -88,15 +90,13 @@ public class ClusterModel extends AbstractModel implements ClusterModelInterface
 		this.checkCapabilities(exampleSet);
 
 		// creating attribute
-		Attribute targetAttribute;
-		if (!isAddingAsLabel) {
-			targetAttribute = AttributeFactory.createAttribute("cluster", Ontology.NOMINAL);
-			exampleSet.getExampleTable().addAttribute(targetAttribute);
-			attributes.setCluster(targetAttribute);
-		} else {
-			targetAttribute = AttributeFactory.createAttribute("label", Ontology.NOMINAL);
-			exampleSet.getExampleTable().addAttribute(targetAttribute);
+		Attribute targetAttribute = AttributeFactory
+				.createAttribute(isAddingAsLabel ? Attributes.LABEL_NAME : Attributes.CLUSTER_NAME, Ontology.NOMINAL);
+		exampleSet.getExampleTable().addAttribute(targetAttribute);
+		if (isAddingAsLabel) {
 			attributes.setLabel(targetAttribute);
+		} else {
+			attributes.setCluster(targetAttribute);
 		}
 
 		if (progress != null) {
@@ -181,18 +181,15 @@ public class ClusterModel extends AbstractModel implements ClusterModelInterface
 	public int[] getClusterAssignments(ExampleSet exampleSet) {
 		int[] clusterAssignments = new int[exampleSet.size()];
 		Attribute idAttribute = exampleSet.getAttributes().getId();
+		NominalMapping mapping = null;
 		if (idAttribute.isNominal()) {
-			int j = 0;
-			for (Example example : exampleSet) {
-				clusterAssignments[j] = getClusterIndexOfId(example.getValueAsString(idAttribute));
-				j++;
-			}
-		} else {
-			int j = 0;
-			for (Example example : exampleSet) {
-				clusterAssignments[j] = getClusterIndexOfId(example.getValue(idAttribute));
-				j++;
-			}
+			mapping = idAttribute.getMapping();
+		}
+		int j = 0;
+		for (Example example : exampleSet) {
+			double value = example.getValue(idAttribute);
+			clusterAssignments[j] = getClusterIndexOfId(mapping != null ? mapping.mapIndex((int) value) : value);
+			j++;
 		}
 		return clusterAssignments;
 	}

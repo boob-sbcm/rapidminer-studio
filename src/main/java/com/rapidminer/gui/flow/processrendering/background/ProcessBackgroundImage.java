@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.flow.processrendering.background;
 
 import java.awt.Font;
@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
-
 import javax.imageio.ImageIO;
 
 import com.rapidminer.gui.look.Colors;
@@ -36,11 +35,15 @@ import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.ProgressThreadListener;
 import com.rapidminer.operator.ExecutionUnit;
 import com.rapidminer.operator.UserData;
+import com.rapidminer.repository.BinaryEntry;
 import com.rapidminer.repository.BlobEntry;
-import com.rapidminer.repository.Entry;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.MalformedRepositoryLocationException;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
+import com.rapidminer.repository.RepositoryLocationType;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 
@@ -185,16 +188,33 @@ public class ProcessBackgroundImage implements UserData<Object> {
 	}
 
 	/**
-	 * Returns the background image. If it has not yet been loaded, will start asynchronous loading
-	 * of it and return a placeholder image until loading is complete. In case an error occurs
-	 * during loading, it will return an error image.
+	 * Returns the background image. If it has not yet been loaded, will start asynchronous loading of it and return a
+	 * placeholder image until loading is complete. In case an error occurs during loading, it will return an error
+	 * image.
 	 *
-	 * @param listener
-	 *            the listener for the {@link ProgressThread} loading the image. If no image needs
-	 *            to be loaded, does nothing with it. Can be {@code null}
+	 * @param listener the listener for the {@link ProgressThread} loading the image. If no image needs to be loaded,
+	 *                 does nothing with it. Can be {@code null}
 	 * @return an image, never {@code null}
+	 * @deprecated since 9.7, use {@link #getImage(String, ProgressThreadListener)} instead
 	 */
+	@Deprecated
 	public Image getImage(ProgressThreadListener listener) {
+		return getImage(null, listener);
+	}
+
+	/**
+	 * Returns the background image. If it has not yet been loaded, will start asynchronous loading of it and return a
+	 * placeholder image until loading is complete. In case an error occurs during loading, it will return an error
+	 * image.
+	 *
+	 * @param relativeToLocation the location the image location should be treated as relative to. Can be {@code null},
+	 *                           in which case the image location will be treated as absolute
+	 * @param listener           the listener for the {@link ProgressThread} loading the image. If no image needs to be
+	 *                           loaded, does nothing with it. Can be {@code null}
+	 * @return an image, never {@code null}
+	 * @since 9.7
+	 */
+	public Image getImage(String relativeToLocation, ProgressThreadListener listener) {
 		if (finishedImageLoading) {
 			return img;
 		}
@@ -208,60 +228,52 @@ public class ProcessBackgroundImage implements UserData<Object> {
 
 				@Override
 				public void run() {
+					String bgLocationString = ProcessBackgroundImage.this.getLocation();
 					try {
-						RepositoryLocation location = new RepositoryLocation(ProcessBackgroundImage.this.getLocation());
-						Entry entry = location.locateEntry();
+						String folder = "";
+						// if relative location is set AND the original image location is not an absolute one (pre 9.7 only absolute locations existed)
+						if (relativeToLocation != null && !bgLocationString.startsWith(RepositoryLocation.REPOSITORY_PREFIX)) {
+							folder = relativeToLocation.endsWith("" + RepositoryLocation.SEPARATOR) ? relativeToLocation : relativeToLocation + RepositoryLocation.SEPARATOR;
+						}
+						RepositoryLocation fakeLoc = new RepositoryLocationBuilder().withLocationType(RepositoryLocationType.DATA_ENTRY).buildFromAbsoluteLocation(folder + bgLocationString);
+						Class<? extends DataEntry> expectedDataType = fakeLoc.getRepository().isSupportingBinaryEntries() ? BinaryEntry.class : BlobEntry.class;
+						RepositoryLocation entryLoc = new RepositoryLocationBuilder().withExpectedDataEntryType(expectedDataType).buildFromAbsoluteLocation(folder + bgLocationString);
+						DataEntry entry = entryLoc.locateData();
 						if (entry == null) {
-							LogService
-									.getRoot()
-									.log(Level.WARNING,
-											"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.missing");
+							LogService.getRoot().log(Level.WARNING,
+									"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.missing");
 							img = createImageFromString(I18N.getGUILabel("process_background.loading.error.label"));
 							errorImageLoading = true;
 							return;
 						}
 
-						if (entry instanceof BlobEntry) {
+						if (entry instanceof BinaryEntry) {
+							BinaryEntry binEntry = (BinaryEntry) entry;
+							// try and create actual image
+							try (InputStream is = binEntry.openInputStream()) {
+								img = createImageFromStream(is);
+							}
+						} else if (entry instanceof BlobEntry) {
 							BlobEntry blob = (BlobEntry) entry;
 							// try and create actual image
-							img = createImageFromBlob(blob);
-
-							if (img == null) {
-								LogService
-								.getRoot()
-								.log(Level.WARNING,
-										"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_type");
-								img = createImageFromString(I18N.getGUILabel("process_background.loading.error.label"));
-								errorImageLoading = true;
-								return;
-							}
-
-							finishedImageLoading = true;
-							if (w == -1 || h == -1) {
-								w = img.getWidth(null);
-								h = img.getHeight(null);
+							try (InputStream is = blob.openInputStream()) {
+								img = createImageFromStream(is);
 							}
 						} else {
-							LogService
-									.getRoot()
-									.log(Level.WARNING,
-											"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_type");
+							LogService.getRoot().log(Level.WARNING,
+									"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_type");
 							img = createImageFromString(I18N.getGUILabel("process_background.loading.error.label"));
 							errorImageLoading = true;
 						}
 					} catch (RepositoryException | MalformedRepositoryLocationException e) {
-						LogService
-								.getRoot()
-								.log(Level.WARNING,
-										"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_loc",
-										ProcessBackgroundImage.this.getLocation());
+						LogService.getRoot().log(Level.WARNING,
+								"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_loc",
+								bgLocationString);
 						img = createImageFromString(I18N.getGUILabel("process_background.loading.error.label"));
 						errorImageLoading = true;
 					} catch (IOException e) {
-						LogService
-								.getRoot()
-								.log(Level.WARNING,
-										"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_type");
+						LogService.getRoot().log(Level.WARNING,
+								"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_type");
 						img = createImageFromString(I18N.getGUILabel("process_background.loading.error.label"));
 						errorImageLoading = true;
 					}
@@ -294,8 +306,7 @@ public class ProcessBackgroundImage implements UserData<Object> {
 	 */
 	@Override
 	public UserData<Object> copyUserData(Object newParent) {
-		ProcessBackgroundImage copy = new ProcessBackgroundImage(x, y, w, h, location, process);
-		return copy;
+		return new ProcessBackgroundImage(x, y, w, h, location, process);
 	}
 
 	/**
@@ -308,7 +319,7 @@ public class ProcessBackgroundImage implements UserData<Object> {
 	private Image createImageFromString(String text) {
 		// to know bounds of desired text we need Graphics context so create fake one
 		Graphics2D g2 = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).createGraphics();
-		Font font = new Font("Arial", Font.PLAIN, 24);
+		Font font = FontTools.getFont("Arial", Font.PLAIN, 24);
 		g2.setFont(font);
 		FontMetrics fm = g2.getFontMetrics();
 		// set intermediate width and height so we don't lose original height of background image
@@ -334,20 +345,29 @@ public class ProcessBackgroundImage implements UserData<Object> {
 	}
 
 	/**
-	 * Creates an {@link Image} from the given {@link BlobEntry}.
+	 * Creates an {@link Image} from the given {@link InputStream}.
 	 *
-	 * @param entry
-	 *            the blob entry which is expected to be an image
+	 * @param is
+	 *            the input stream which is expected to be an image
 	 * @return the image or {@code null} if it is not an image
 	 * @throws IOException
 	 *             if the entry does not contain valid image data
-	 * @throws RepositoryException
-	 *             if the entry could not be read
 	 */
-	private Image createImageFromBlob(BlobEntry entry) throws IOException, RepositoryException {
-		InputStream is = entry.openInputStream();
-		BufferedImage img = ImageIO.read(is);
-		is.close();
+	private Image createImageFromStream(InputStream is) throws IOException {
+		Image img = ImageIO.read(is);
+
+		if (img == null) {
+			LogService.getRoot().log(Level.WARNING,
+					"com.rapidminer.gui.flow.processrendering.background_image.ProcessBackgroundImageDecorator.invalid_type");
+			img = createImageFromString(I18N.getGUILabel("process_background.loading.error.label"));
+			errorImageLoading = true;
+		} else {
+			finishedImageLoading = true;
+			if (w == -1 || h == -1) {
+				w = img.getWidth(null);
+				h = img.getHeight(null);
+			}
+		}
 
 		return img;
 	}

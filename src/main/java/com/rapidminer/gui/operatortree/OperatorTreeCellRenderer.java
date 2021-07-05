@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -26,8 +26,6 @@ import java.awt.Graphics;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
-import java.util.List;
-
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.JComponent;
@@ -44,7 +42,8 @@ import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.operator.ExecutionUnit;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorDescription;
-import com.rapidminer.operator.ProcessSetupError;
+import com.rapidminer.tools.OperatorService;
+import com.rapidminer.tools.Tools;
 
 
 /**
@@ -66,6 +65,8 @@ public class OperatorTreeCellRenderer extends DefaultTreeCellRenderer {
 
 		private static final String WARNINGS = "16/sign_warning.png";
 
+		private static final String BLACKLISTED = "16/lock.png";
+
 		private static final long serialVersionUID = -7680223153786362865L;
 
 		private static final Color SELECTED_COLOR = UIManager.getColor("Tree.selectionBackground");
@@ -76,23 +77,15 @@ public class OperatorTreeCellRenderer extends DefaultTreeCellRenderer {
 
 		private static final Color TEXT_NON_SELECTED_COLOR = UIManager.getColor("Tree.textForeground");
 
-		private static Icon breakpointBeforeIcon = null;
+		private static Icon breakpointBeforeIcon = SwingTools.createIcon(BREAKPOINT_BEFORE);
 
-		private static Icon breakpointAfterIcon = null;
+		private static Icon breakpointAfterIcon = SwingTools.createIcon(BREAKPOINT_AFTER);
 
-		private static Icon breakpointsIcon = null;
+		private static Icon breakpointsIcon = SwingTools.createIcon(BREAKPOINTS);
 
-		private static Icon warningsIcon = null;
+		private static Icon warningsIcon = SwingTools.createIcon(WARNINGS);
 
-		static {
-			// init breakpoint icons
-			breakpointBeforeIcon = SwingTools.createIcon(BREAKPOINT_BEFORE);
-			breakpointAfterIcon = SwingTools.createIcon(BREAKPOINT_AFTER);
-			breakpointsIcon = SwingTools.createIcon(BREAKPOINTS);
-
-			// init warnings icon
-			warningsIcon = SwingTools.createIcon(WARNINGS);
-		}
+		private static Icon blacklistedIcon = SwingTools.createIcon(BLACKLISTED);
 
 		private final JLabel iconLabel = new JLabel("");
 
@@ -170,46 +163,34 @@ public class OperatorTreeCellRenderer extends DefaultTreeCellRenderer {
 			}
 
 			OperatorDescription descr = operator.getOperatorDescription();
-			Icon icon = descr.getSmallIcon();
-			if (icon != null) {
-				iconLabel.setIcon(icon);
-			} else {
-				iconLabel.setIcon(null);
-			}
+			iconLabel.setIcon(descr.getSmallIcon());
 			iconLabel.setEnabled(operator.isEnabled());
-
-			nameLabel.setText(operator.getName());
+			nameLabel.setText("<html>" + Tools.escapeHTML(operator.getName()) + "</html>");
 			nameLabel.setEnabled(operator.isEnabled());
 			classLabel.setText(descr.getName());
 			classLabel.setEnabled(operator.isEnabled());
 
 			// ICONS
 			// breakpoints
-			if (operator.hasBreakpoint(BreakpointListener.BREAKPOINT_BEFORE)) {
+			if (operator.hasBreakpoint(BreakpointListener.BREAKPOINT_BEFORE)
+					&& operator.hasBreakpoint(BreakpointListener.BREAKPOINT_AFTER)) {
+				breakpoint.setIcon(breakpointsIcon);
+			} else if (operator.hasBreakpoint(BreakpointListener.BREAKPOINT_BEFORE)) {
 				breakpoint.setIcon(breakpointBeforeIcon);
 			} else if (operator.hasBreakpoint(BreakpointListener.BREAKPOINT_AFTER)) {
 				breakpoint.setIcon(breakpointAfterIcon);
 			} else {
 				breakpoint.setIcon(null);
 			}
-
-			if (operator.hasBreakpoint(BreakpointListener.BREAKPOINT_BEFORE)
-					&& operator.hasBreakpoint(BreakpointListener.BREAKPOINT_AFTER)) {
-				breakpoint.setIcon(breakpointsIcon);
-			}
 			breakpoint.setEnabled(operator.isEnabled());
 
 			// errors
-			List<ProcessSetupError> errors = operator.getErrorList();
-			if (errors.size() > 0) {
+			if (OperatorService.isOperatorBlacklisted(descr.getKey())) {
+				error.setIcon(blacklistedIcon);
+			} else if (!operator.getErrorList().isEmpty()) {
 				error.setIcon(warningsIcon);
 			} else {
 				error.setIcon(null);
-
-				String descriptionText = descr.getLongDescriptionHTML();
-				if (descriptionText == null) {
-					descriptionText = descr.getShortDescription();
-				}
 			}
 			error.setEnabled(operator.isEnabled());
 

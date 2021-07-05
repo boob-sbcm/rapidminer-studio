@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -33,8 +33,9 @@ import javax.swing.filechooser.FileFilter;
  * be created.
  * 
  * @author Sebastian Land
- * 
+ * @deprecated Replaced by the ExcelSheetSelectionWizardStep since 9.0.0
  */
+@Deprecated
 public class ExcelFileSelectionWizardStep extends FileSelectionWizardStep {
 
 	private ExcelResultSetConfiguration configuration;

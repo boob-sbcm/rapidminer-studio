@@ -1,23 +1,27 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
 */
 package com.rapidminer.operator.performance;
 
+import java.util.Objects;
+
+import com.rapidminer.operator.UserError;
+import com.rapidminer.operator.WrapperOperatorRuntimeException;
 import com.rapidminer.tools.math.Averagable;
 
 
@@ -26,13 +30,13 @@ import com.rapidminer.tools.math.Averagable;
  * Each <tt>PerformanceCriterion</tt> contains a method to compute this criterion on a given set of
  * examples, each which has to have a real and a predicted label.
  * </p>
- * 
+ *
  * <p>
  * PerformanceCriteria must implement the <tt>compareTo</tt> method in a way that allows
  * <tt>Collections</tt> to sort the criteria in ascending order and determine the best as the
  * maximum.
  * </p>
- * 
+ *
  * @author Ingo Mierswa
  */
 public abstract class PerformanceCriterion extends Averagable implements Comparable<PerformanceCriterion> {
@@ -66,11 +70,11 @@ public abstract class PerformanceCriterion extends Averagable implements Compara
 	 * always be maximized. Hence, if your criterion is better the smaller the value is you should
 	 * return something like (-1 * value) or (1 / value).
 	 * </p>
-	 * 
+	 *
 	 * <p>
 	 * Subclasses should use {@link #getAverage()} instead of {@link #getMikroAverage()} in this
-	 * method since usually the makro average (if available) should be optmized instead of the mikro
-	 * average. The mikro average should only be used in the (rare) cases where no makro average is
+	 * method since usually the macro average (if available) should be optmized instead of the micro
+	 * average. The micro average should only be used in the (rare) cases where no macro average is
 	 * available but this is automatically done returned by {@link #getAverage()} in these cases.
 	 * </p>
 	 */
@@ -93,19 +97,25 @@ public abstract class PerformanceCriterion extends Averagable implements Compara
 	 * object has fitness bigger than this object, the return value is -1. If the given object has
 	 * fitness smaller than this object, 1 is returned. No characteristics beside the fitness are
 	 * used to compare two objects of this class.
-	 * 
+	 *
+	 * order: NaN < -∞ < 0 < 1 < +∞
+	 *
 	 * @param o
 	 *            Object of this class to compare this object to.
 	 * @return -1, 0 or 1 if the given object is greater than, equal to, or less than this object.
 	 */
 	@Override
 	public int compareTo(PerformanceCriterion o) {
-		if (!this.getClass().equals(o.getClass())) {
-			throw new RuntimeException("Mismatched criterion class:" + this.getClass() + ", " + o.getClass());
+		Class<? extends PerformanceCriterion> aClass = this.getClass();
+		Class<? extends PerformanceCriterion> oClass = o.getClass();
+		boolean classesDiffer = aClass != oClass;
+		String aType = this.getName();
+		String oType = o.getName();
+		if (classesDiffer || !Objects.equals(aType, oType)) {
+			throw new WrapperOperatorRuntimeException(new UserError(null,
+					"performance_criterion_" + (classesDiffer ? "class" : "type") + "_mismatch",
+					classesDiffer ? aClass.getName() : aType, classesDiffer ? oClass.getName() : oType));
 		}
-		if (!o.getName().equals(this.getName())) {
-			throw new RuntimeException("Mismatched criterion type:" + this.getName() + ", " + o.getName());
-		}
-		return Double.compare(this.getFitness(), o.getFitness());
+		return Double.compare(-o.getFitness(), -this.getFitness());
 	}
 }

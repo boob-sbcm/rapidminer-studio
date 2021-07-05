@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.example.set;
 
 import java.io.File;
@@ -33,7 +33,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
-
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -74,10 +73,10 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 	private static final long serialVersionUID = 8596141056047402798L;
 
 	/** Maps attribute names to list of statistics objects. */
-	private final Map<String, List<Statistics>> statisticsMap = new HashMap<String, List<Statistics>>();
+	private final Map<String, List<Statistics>> statisticsMap = new HashMap<>();
 
 	/** Maps the id values on the line index in the example table. */
-	private Map<Double, int[]> idMap = new HashMap<Double, int[]>();
+	private Map<Double, int[]> idMap = new HashMap<>();
 
 	/** This method overrides the implementation of ResultObjectAdapter and returns "ExampleSet". */
 	@Override
@@ -158,27 +157,13 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 	@Override
 	public void writeDataFile(File dataFile, int fractionDigits, boolean quoteNominal, boolean zipped, boolean append,
 			Charset encoding) throws IOException {
-		PrintWriter out = null;
-		OutputStream outStream = null;
-		try {
-			if (zipped) {
-				outStream = new GZIPOutputStream(new FileOutputStream(dataFile, append));
-			} else {
-				outStream = new FileOutputStream(dataFile, append);
-			}
-			out = new PrintWriter(new OutputStreamWriter(outStream, encoding));
+		try (OutputStream outStream = new FileOutputStream(dataFile, append);
+				OutputStream zippedStream = zipped ? new GZIPOutputStream(outStream) : null;
+				OutputStreamWriter osw = new OutputStreamWriter(zipped ? zippedStream : outStream, encoding);
+				PrintWriter out = new PrintWriter(osw)) {
 			Iterator<Example> reader = iterator();
 			while (reader.hasNext()) {
 				out.println(reader.next().toDenseString(fractionDigits, quoteNominal));
-			}
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			if (out != null) {
-				out.close();
-			}
-			if (outStream != null) {
-				outStream.close();
 			}
 		}
 	}
@@ -187,27 +172,13 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 	@Override
 	public void writeSparseDataFile(File dataFile, int format, int fractionDigits, boolean quoteNominal, boolean zipped,
 			boolean append, Charset encoding) throws IOException {
-		PrintWriter out = null;
-		OutputStream outStream = null;
-		try {
-			if (zipped) {
-				outStream = new GZIPOutputStream(new FileOutputStream(dataFile, append));
-			} else {
-				outStream = new FileOutputStream(dataFile, append);
-			}
-			out = new PrintWriter(new OutputStreamWriter(outStream, encoding));
+		try (OutputStream outStream = new FileOutputStream(dataFile, append);
+				OutputStream zippedStream = zipped ? new GZIPOutputStream(outStream) : null;
+				OutputStreamWriter osw = new OutputStreamWriter(zipped ? zippedStream : outStream, encoding);
+				PrintWriter out = new PrintWriter(osw)) {
 			Iterator<Example> reader = iterator();
 			while (reader.hasNext()) {
 				out.println(reader.next().toSparseString(format, fractionDigits, quoteNominal));
-			}
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			if (out != null) {
-				out.close();
-			}
-			if (outStream != null) {
-				outStream.close();
 			}
 		}
 	}
@@ -243,9 +214,11 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 			}
 
 			// writing XML from DOM
-			PrintWriter writer = new PrintWriter(new OutputStreamWriter(new FileOutputStream(attFile), encoding));
-			writer.print(XMLTools.toString(document, encoding));
-			writer.close();
+			try (FileOutputStream fos = new FileOutputStream(attFile);
+					OutputStreamWriter osw = new OutputStreamWriter(fos, encoding);
+					PrintWriter writer = new PrintWriter(osw)) {
+				writer.print(XMLTools.toString(document, encoding));
+			}
 		} catch (ParserConfigurationException e) {
 			throw new IOException("Cannot create XML document builder: " + e, e);
 		} catch (XMLException e) {
@@ -279,7 +252,7 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 
 			// special attributes
 			AttributeRole labelRole = getAttributes().getRole(Attributes.LABEL_NAME);
-			if ((labelRole != null) && (format != SparseFormatDataRowReader.FORMAT_NO_LABEL)) {
+			if (labelRole != null && format != SparseFormatDataRowReader.FORMAT_NO_LABEL) {
 				root.appendChild(writeAttributeMetaData(labelRole, 0, document, true));
 			}
 			AttributeRole idRole = getAttributes().getRole(Attributes.ID_NAME);
@@ -299,9 +272,11 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 			}
 
 			// writing XML from DOM
-			PrintWriter writer = new PrintWriter(new OutputStreamWriter(new FileOutputStream(attFile), encoding));
-			writer.print(XMLTools.toString(document, encoding));
-			writer.close();
+			try (FileOutputStream fos = new FileOutputStream(attFile);
+					OutputStreamWriter osw = new OutputStreamWriter(fos, encoding);
+					PrintWriter writer = new PrintWriter(osw)) {
+				writer.print(XMLTools.toString(document, encoding));
+			}
 		} catch (ParserConfigurationException e) {
 			throw new IOException("Cannot create XML document builder: " + e, e);
 		} catch (XMLException e) {
@@ -320,7 +295,8 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 	}
 
 	/** Writes the data of this attribute in the given stream. */
-	private Element writeAttributeMetaData(String tag, Attribute attribute, int sourcecol, Document document, boolean sparse) {
+	private Element writeAttributeMetaData(String tag, Attribute attribute, int sourcecol, Document document,
+			boolean sparse) {
 		Element attributeElement = document.createElement(tag);
 		attributeElement.setAttribute("name", attribute.getName());
 		if (!sparse || tag.equals("attribute")) {
@@ -332,8 +308,8 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 		}
 
 		// nominal values
-		if ((Ontology.ATTRIBUTE_VALUE_TYPE.isA(attribute.getValueType(), Ontology.NOMINAL))
-				&& (!tag.equals(Attributes.KNOWN_ATTRIBUTE_TYPES[Attributes.TYPE_ID]))) {
+		if (Ontology.ATTRIBUTE_VALUE_TYPE.isA(attribute.getValueType(), Ontology.NOMINAL)
+				&& !tag.equals(Attributes.KNOWN_ATTRIBUTE_TYPES[Attributes.TYPE_ID])) {
 			for (String nominalValue : attribute.getMapping().getValues()) {
 				Element valueElement = document.createElement("value");
 				valueElement.setTextContent(nominalValue);
@@ -375,17 +351,18 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 	}
 
 	/**
-	 * Clones the example set by invoking a single argument clone constructor. Please note that a
-	 * cloned example set has no information about the attribute statistics. That means, that
-	 * attribute statistics must be (re-)calculated after the clone was created.
+	 * Clones the example set by invoking a single argument clone constructor. Please note that a cloned example set has
+	 * no information about the attribute statistics. That means, that attribute statistics must be (re-)calculated
+	 * after the clone was created.
 	 */
 	@Override
 	public ExampleSet clone() {
 		try {
 			Class<? extends AbstractExampleSet> clazz = getClass();
-			Constructor<? extends AbstractExampleSet> cloneConstructor = clazz.getConstructor(new Class[] { clazz });
-			AbstractExampleSet result = cloneConstructor.newInstance(new Object[] { this });
+			Constructor<? extends AbstractExampleSet> cloneConstructor = clazz.getConstructor(new Class[]{clazz});
+			AbstractExampleSet result = cloneConstructor.newInstance(new Object[]{this});
 			result.idMap = this.idMap;
+			result.setAllUserData(this.getAllUserData());
 			return result;
 		} catch (IllegalAccessException e) {
 			throw new RuntimeException("Cannot clone ExampleSet: " + e.getMessage());
@@ -465,7 +442,7 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 	 * <p>
 	 * The statistics calculation is stopped by {@link Thread#interrupt()}.
 	 */
-	private void recalculateAttributeStatistics(List<Attribute> attributeList) {
+	private synchronized void recalculateAttributeStatistics(List<Attribute> attributeList) {
 		// do nothing if not desired
 		if (attributeList.size() == 0) {
 			return;
@@ -478,7 +455,7 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 			if (weightAttribute != null && !weightAttribute.isNumerical()) {
 				weightAttribute = null;
 			}
-			
+
 			for (Attribute attribute : attributeList) {
 				if (weightAttribute == null) {
 					for (Example example : this) {
@@ -501,21 +478,16 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 
 			// store cloned statistics
 			for (Attribute attribute : attributeList) {
-				List<Statistics> statisticsList = statisticsMap.get(attribute.getName());
-				// no stats known for this attribute at all --> new list
-				if (statisticsList == null) {
-					statisticsList = new LinkedList<Statistics>();
-					statisticsMap.put(attribute.getName(), statisticsList);
-				}
-
-				// in all cases: clear the list before adding new stats (clone of the calculations)
-				statisticsList.clear();
+				// do not directly work on the existing List because that might force a
+				// ConcurrentModification and the well known Exception
+				List<Statistics> tmpStatisticsList = new LinkedList<>();
 
 				Iterator<Statistics> stats = attribute.getAllStatistics();
 				while (stats.hasNext()) {
 					Statistics statistics = (Statistics) stats.next().clone();
-					statisticsList.add(statistics);
+					tmpStatisticsList.add(statistics);
 				}
+				statisticsMap.put(attribute.getName(), tmpStatisticsList);
 				if (Thread.currentThread().isInterrupted()) {
 					return;
 				}
@@ -573,4 +545,22 @@ public abstract class AbstractExampleSet extends ResultObjectAdapter implements 
 
 		return Double.NaN;
 	}
+
+	/**
+	 * Returns {@code true} if and only if the view implemented by this {@link ExampleSet} is thread-safe with respect
+	 * to read operations. This does not guarantee the thread-safety of the entire data set: both the underlying {@link
+	 * com.rapidminer.example.table.ExampleTable} and the set's attributes might be unsafe to be read from concurrently
+	 * and thus need to be checked separately.
+	 *
+	 * <p>A complete check is implemented by
+	 * {@link com.rapidminer.example.utils.ExampleSets#createThreadSafeCopy(ExampleSet)} which only creates a deep copy
+	 * if the thread-safety of the input example set is not guaranteed.
+	 *
+	 * @return {@code true} iff the view implemented by this example set is thread-safe w.r.t. to read operations
+	 * @see com.rapidminer.example.utils.ExampleSets#createThreadSafeCopy(ExampleSet)
+	 */
+	public boolean isThreadSafeView() {
+		return false;
+	}
+
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,7 +19,6 @@
 package com.rapidminer.gui.tools;
 
 import java.util.logging.Level;
-
 import javax.swing.Icon;
 
 import com.rapidminer.gui.MainFrame;
@@ -45,6 +44,27 @@ import com.vlsolutions.swing.docking.DockKey;
  */
 public class ResourceDockKey extends DockKey {
 
+	/**
+	 * This is the key for {@link #putProperty(String, Object)} which can be used to define the name of another dockable
+	 * (the dockkey) next to which this dockable should be opened. If the specified dockkey does not exist or is not
+	 * shown, will use the {@link #PROPERTY_KEY_DEFAULT_FALLBACK_LOCATION} instead. Same when this property is not set.
+	 * Must be a {@link String}, see {@link ResourceDockKey#getKey()}.
+	 *
+	 * @since 9.7
+	 */
+	public static final String PROPERTY_KEY_NEXT_TO_DOCKABLE = "next_to_dockable";
+
+	/**
+	 * This is the key for {@link #putProperty(String, Object)} which can be used to define the fallback default open
+	 * position of a dockable. Used when the dockable specified by {@link #PROPERTY_KEY_NEXT_TO_DOCKABLE} does not exist
+	 * or is not shown, or the property is not set at all. See {@link com.vlsolutions.swing.docking.RelativeDockablePosition}.
+	 * <p>Note: This is not guaranteed to work, VLDockings positioning algorithm is unreliable at best...</p>
+	 *
+	 * @since 9.7
+	 */
+	public static final String PROPERTY_KEY_DEFAULT_FALLBACK_LOCATION = "default_dockable_location";
+
+
 	public ResourceDockKey(String resourceKey) {
 		this(resourceKey, false);
 	}
@@ -66,7 +86,7 @@ public class ResourceDockKey extends DockKey {
 		}
 		setFloatEnabled(true);
 		setCloseEnabled(true);
-		setAutoHideEnabled(true);
+		setAutoHideEnabled(false);
 
 		// setting default dock group to root: Must be overriden if should be result
 		setDockGroup(MainFrame.DOCK_GROUP_ROOT);

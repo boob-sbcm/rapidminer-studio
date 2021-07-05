@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -58,6 +58,7 @@ import com.rapidminer.tools.expression.internal.UnknownResolverVariableException
  * are derived from a user specified list.
  *
  * @author Sebastian Land
+ * @deprecated since 9.2.0, use {@link com.rapidminer.extension.utility.operator.generator.CreateExampleSet} instead
  */
 public class UserSpecificationDataGenerator extends AbstractExampleSource {
 
@@ -223,13 +224,14 @@ public class UserSpecificationDataGenerator extends AbstractExampleSource {
 	@Override
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
-		types.add(new ParameterTypeList(PARAMETER_VALUES,
+		ParameterType type = new ParameterTypeList(PARAMETER_VALUES,
 				"This parameter defines the attributes and their values in the single example returned.",
 				new ParameterTypeString(PARAMETER_ATTRIBUTE_NAME, "This is the name of the generated attribute.", false),
 				new ParameterTypeExpression(PARAMETER_ATTRIBUTE_VALUE,
-						"An expression that is parsed to derive the value of this attribute.",
-						new OperatorVersionCallable(this)),
-				false));
+						"An expression that is parsed to derive the value of this attribute.", new OperatorVersionCallable(this)),
+				false);
+		type.setPrimary(true);
+		types.add(type);
 
 		types.add(new ParameterTypeList(PARAMETER_ROLES, "This parameter defines additional attribute role combinations.",
 				new ParameterTypeString(PARAMETER_NAME, "The name of the attribute whose role should be changed.", false,

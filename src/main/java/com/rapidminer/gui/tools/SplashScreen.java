@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.tools;
 
 import java.awt.AlphaComposite;
@@ -34,13 +34,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Level;
-
 import javax.imageio.ImageIO;
+import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -48,6 +47,7 @@ import javax.swing.Timer;
 
 import com.rapidminer.gui.license.LicenseTools;
 import com.rapidminer.license.License;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.Tools;
@@ -63,23 +63,26 @@ import com.rapidminer.tools.plugin.Plugin;
  */
 public class SplashScreen extends JPanel implements ActionListener {
 
-	private static final Font FONT_SANS_SERIF_11 = new Font("SansSerif", java.awt.Font.PLAIN, 11);
-	private static final Font FONT_SANS_SERIF_BOLD_11 = new Font("SansSerif", java.awt.Font.BOLD, 11);
-	private static final Font FONT_OPEN_SANS_15 = new Font("Open Sans", java.awt.Font.PLAIN, 15);
-	private static final Font FONT_OPEN_SANS_LIGHT_60 = new Font("Open Sans Light", java.awt.Font.PLAIN, 60);
+	private static final Font FONT_SANS_SERIF_11 = FontTools.getFont(Font.SANS_SERIF, java.awt.Font.PLAIN, 11);
+	private static final Font FONT_SANS_SERIF_BOLD_11 = FontTools.getFont(Font.SANS_SERIF, java.awt.Font.BOLD, 11);
+	private static final Font FONT_OPEN_SANS_15 = FontTools.getFont("Open Sans", java.awt.Font.PLAIN, 15);
+	private static final Font FONT_OPEN_SANS_LIGHT_60 = FontTools.getFont("Open Sans Light", java.awt.Font.PLAIN, 60);
 
 	private static final int EXTENSION_GAP = 400;
 	private static final float EXTENSION_FADE_TIME = 1000;
 
 	private static final int MAX_NUMBER_EXTENSION_ICONS_X = 4;
-	private static final float MAX_NUMBER_EXTENSION_ICONS_Y = 2f;
-	private static final int MAX_NUMBER_EXTENSION_ICONS = (int) (MAX_NUMBER_EXTENSION_ICONS_X
-			* MAX_NUMBER_EXTENSION_ICONS_Y);
+	private static final int MAX_NUMBER_EXTENSION_ICONS_Y = 2;
+	private static final int MAX_NUMBER_EXTENSION_ICONS = MAX_NUMBER_EXTENSION_ICONS_X * MAX_NUMBER_EXTENSION_ICONS_Y;
 
 	private static final long serialVersionUID = -1525644776910410809L;
 
-	private static final Paint MAIN_PAINT = new Color(96, 96, 96);
-	private static final Paint WHITE_PAINT = Color.WHITE;
+	private static final Paint VERY_DIM_GREY = new Color(96, 96, 96);
+
+	/**
+	 * Rendering space of an extension icon (width + height)
+	 */
+	private static final int SHIFT_X_Y = 51;
 
 	public static Image backgroundImage = null;
 
@@ -89,11 +92,9 @@ public class SplashScreen extends JPanel implements ActionListener {
 
 	static {
 		try {
-			if (backgroundImage == null) {
-				URL url = Tools.getResource("splashscreen_background.png");
-				if (url != null) {
-					backgroundImage = ImageIO.read(url);
-				}
+			URL url = Tools.getResource("splashscreen_background.png");
+			if (url != null) {
+				backgroundImage = ImageIO.read(url);
 			}
 		} catch (IOException e) {
 			LogService.getRoot().log(Level.WARNING,
@@ -101,23 +102,22 @@ public class SplashScreen extends JPanel implements ActionListener {
 		}
 	}
 
-	private transient Image productLogo;
+	private final transient Image productLogo;
 
-	private Properties properties;
+	private final Properties properties;
 
-	private JFrame splashScreenFrame = new JFrame();
+	private JFrame splashScreenFrame;
 
 	private String message = "Starting...";
 
 	private Timer animationTimer;
-	private List<Runnable> animationRenderers = new LinkedList<>();
+	private final List<Runnable> animationRenderers = new CopyOnWriteArrayList<>();
 
-	private List<Pair<BufferedImage, Long>> extensionIcons = Collections
-			.synchronizedList(new LinkedList<Pair<BufferedImage, Long>>());
+	private final List<Pair<BufferedImage, Long>> extensionIcons = new ArrayList<>();
 	private long lastExtensionAdd = 0;
 	private License license;
 	private String productEdition;
-	private String productName;
+	private final String productName;
 
 	public SplashScreen(String productVersion, Image productLogo) {
 		this(productLogo, createDefaultProperties(productVersion));
@@ -134,6 +134,7 @@ public class SplashScreen extends JPanel implements ActionListener {
 
 		splashScreenFrame = new JFrame(properties.getProperty("name"));
 		splashScreenFrame.getContentPane().add(this);
+		splashScreenFrame.getRootPane().setBorder(BorderFactory.createLineBorder(Color.BLACK));
 		SwingTools.setFrameIcon(splashScreenFrame);
 
 		splashScreenFrame.setUndecorated(true);
@@ -188,13 +189,9 @@ public class SplashScreen extends JPanel implements ActionListener {
 		super.paint(g);
 		Graphics2D g2d = (Graphics2D) g.create();
 		drawMain(g2d);
-		g2d.setColor(Color.black);
-		g2d.drawRect(0, 0, getWidth() - 1, getHeight() - 1);
-
 		// draw extensions
 		List<Pair<BufferedImage, Long>> currentExtensionIcons = getSynchronizedExtensionIcons();
-		int size = currentExtensionIcons.size();
-		if (size > 0) {
+		if (!currentExtensionIcons.isEmpty()) {
 
 			g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -212,8 +209,6 @@ public class SplashScreen extends JPanel implements ActionListener {
 			}
 
 			// now paint other icons
-			int shiftX = 51;
-			int shiftY = 51;
 			for (int i = 0; i < numberToShow; i++) {
 				if (numberToShow > i + MAX_NUMBER_EXTENSION_ICONS) {
 					// then we have to fade out again
@@ -226,8 +221,8 @@ public class SplashScreen extends JPanel implements ActionListener {
 					float min = Math.min((currentTimeMillis - pair.getSecond()) / EXTENSION_FADE_TIME, 1f);
 					g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, min));
 				}
-				int x = i % MAX_NUMBER_EXTENSION_ICONS_X * shiftX;
-				int y = (int) (Math.floor(i / MAX_NUMBER_EXTENSION_ICONS_X) % MAX_NUMBER_EXTENSION_ICONS_Y) * shiftY;
+				int x = i % MAX_NUMBER_EXTENSION_ICONS_X * SHIFT_X_Y;
+				int y = i / MAX_NUMBER_EXTENSION_ICONS_X % MAX_NUMBER_EXTENSION_ICONS_Y * SHIFT_X_Y;
 				g2d.drawImage(currentExtensionIcons.get(i).getFirst(), null, x, y);
 			}
 		}
@@ -237,7 +232,7 @@ public class SplashScreen extends JPanel implements ActionListener {
 
 	public void drawMain(Graphics2D g) {
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-		g.setPaint(MAIN_PAINT);
+		g.setPaint(VERY_DIM_GREY);
 		g.fillRect(0, 0, getWidth(), getHeight());
 
 		if (backgroundImage != null) {
@@ -258,7 +253,7 @@ public class SplashScreen extends JPanel implements ActionListener {
 		// draw product name and version
 		{
 			g.setFont(FONT_OPEN_SANS_LIGHT_60);
-			g.setPaint(WHITE_PAINT);
+			g.setPaint(Color.WHITE);
 			FontMetrics fm = getFontMetrics(g.getFont());
 			int x_product = (getSize().width - fm.stringWidth(productName)) / 2;
 			int y_product = (getSize().height - 70 - fm.getHeight()) / 2 + fm.getAscent();
@@ -276,7 +271,7 @@ public class SplashScreen extends JPanel implements ActionListener {
 			int y_version = y_product + fm.getHeight();
 			x_version -= fm.stringWidth(version);
 			g.drawString(version, x_version, y_version);
-			g.setPaint(MAIN_PAINT);
+			g.setPaint(VERY_DIM_GREY);
 		}
 
 		// draw bottom text
@@ -340,16 +335,15 @@ public class SplashScreen extends JPanel implements ActionListener {
 	}
 
 	public void addAnimationRenderer(Runnable runable) {
-		this.animationRenderers.add(runable);
+		animationRenderers.add(runable);
 	}
 
-	@Override
 	/**
 	 * This method is used for being repainted for splash animation.
 	 */
+	@Override
 	public void actionPerformed(ActionEvent e) {
-		List<Runnable> copiedAnimationRenderers = new LinkedList<>(animationRenderers);
-		for (Runnable runnable : copiedAnimationRenderers) {
+		for (Runnable runnable : animationRenderers) {
 			runnable.run();
 		}
 		repaint();
@@ -357,7 +351,7 @@ public class SplashScreen extends JPanel implements ActionListener {
 
 	/**
 	 * @param license
-	 *            the currently active license
+	 * 		the currently active license
 	 */
 	public void setLicense(License license) {
 		this.license = license;

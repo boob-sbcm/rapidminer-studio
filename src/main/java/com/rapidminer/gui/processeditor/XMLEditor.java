@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,7 +24,6 @@ import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.util.List;
 import java.util.logging.Level;
-
 import javax.swing.BorderFactory;
 import javax.swing.JPanel;
 import javax.swing.JToolBar;
@@ -37,6 +36,8 @@ import org.fife.ui.rtextarea.RTextScrollPane;
 import com.rapidminer.Process;
 import com.rapidminer.gui.MainFrame;
 import com.rapidminer.gui.RapidMinerGUI;
+import com.rapidminer.gui.flow.processrendering.draw.ProcessDrawUtils;
+import com.rapidminer.gui.flow.processrendering.view.ProcessRendererView;
 import com.rapidminer.gui.look.Colors;
 import com.rapidminer.gui.tools.ExtendedJToolBar;
 import com.rapidminer.gui.tools.ResourceAction;
@@ -77,7 +78,13 @@ public class XMLEditor extends JPanel implements ProcessEditor, Dockable {
 		this.mainFrame = mainFrame;
 
 		// create text area
-		this.editor = new RSyntaxTextArea(new RSyntaxDocument(SyntaxConstants.SYNTAX_STYLE_XML));
+		this.editor = new RSyntaxTextArea(new RSyntaxDocument(SyntaxConstants.SYNTAX_STYLE_XML)) {
+
+			@Override
+			public synchronized void setText(String t) {
+				super.setText(t);
+			}
+		};
 		this.editor.setAnimateBracketMatching(true);
 		this.editor.setAutoIndentEnabled(true);
 		this.editor.setSelectionColor(Colors.TEXT_HIGHLIGHT_BACKGROUND);
@@ -90,7 +97,7 @@ public class XMLEditor extends JPanel implements ProcessEditor, Dockable {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				try {
 					validateProcess();
 				} catch (IOException | XMLException e1) {
@@ -113,7 +120,10 @@ public class XMLEditor extends JPanel implements ProcessEditor, Dockable {
 
 	@Override
 	public void processUpdated(Process process) {
-		setText(process.getRootOperator().getXML(true));
+		// we don't use an encryption context because:
+		// a) encrypted values in operator parameters are deprecated since 9.7, they should no longer be used in the future
+		// b) each encryption results in a different output for more security, so this would be very confusing and break the "is process changed?" logic
+		setText(process.getRootOperator().getXML(false, getEncryptionContext(process)));
 	}
 
 	@Override
@@ -127,22 +137,41 @@ public class XMLEditor extends JPanel implements ProcessEditor, Dockable {
 		if (!selection.isEmpty()) {
 			Operator currentOperator = selection.get(0);
 			String name = currentOperator.getName();
-			String text = this.editor.getText();
-			int result = text.indexOf("\"" + name + "\"");
-			if (result >= 0) {
-				this.editor.select(result + 1, result + name.length() + 1);
-				this.editor.setCaretPosition(result + name.length() + 1);
+			synchronized (this.editor) {
+				String text = this.editor.getText();
+				int start = text.indexOf("\"" + name + "\"");
+				int end = start + name.length() + 1;
+				if (start >= 0 && editor.getDocument().getLength() > end) {
+					this.editor.select(start + 1, end);
+					this.editor.setCaretPosition(end);
+				}
 			}
 		}
 	}
 
+	/**
+	 * Validates the process represented by the current xml. Will update the actual process if the xml representation
+	 * differs. This diff will ignore white space changes, but will update the displayed xml with the parser
+	 * conform version.
+	 */
 	public synchronized void validateProcess() throws IOException, XMLException {
-		Process newExp = new Process(editor.getText().trim());
-		if (!newExp.getRootOperator().getXML(true)
-				.equals(RapidMinerGUI.getMainFrame().getProcess().getRootOperator().getXML(true))) {
-			Process old = RapidMinerGUI.getMainFrame().getProcess();
-			newExp.setProcessLocation(old.getProcessLocation());
-			mainFrame.setProcess(newExp, false);
+		String editorContent = getXMLFromEditor();
+		Process oldProcess = RapidMinerGUI.getMainFrame().getProcess();
+		String encryptionContext = getEncryptionContext(oldProcess);
+		String oldXML = oldProcess.getRootOperator().getXML(false, encryptionContext);
+		if (oldXML.trim().equals(editorContent)) {
+			return;
+		}
+		Process newProcess = new Process(editorContent, getEncryptionContext(oldProcess));
+		ProcessRendererView processRenderer = mainFrame.getProcessPanel().getProcessRenderer();
+		ProcessDrawUtils.ensureOperatorsHaveLocation(newProcess, processRenderer.getModel());
+		String newXML = newProcess.getRootOperator().getXML(false, encryptionContext);
+		if (!newXML.equals(oldXML)) {
+			newProcess.setProcessLocation(oldProcess.getProcessLocation());
+			mainFrame.setProcess(newProcess, false);
+			processRenderer.getModel().setProcess(newProcess, false, false);
+		} else {
+			setText(oldXML);
 		}
 	}
 
@@ -158,5 +187,13 @@ public class XMLEditor extends JPanel implements ProcessEditor, Dockable {
 	@Override
 	public DockKey getDockKey() {
 		return DOCK_KEY;
+	}
+
+	/**
+	 * @return always {@code null} because each encryption results in a different output for more security, so this
+	 * would be very confusing and break the "is process changed?" logic if we actually did encrypt here. See comment
+	 */
+	private String getEncryptionContext(Process process) {
+		return null;
 	}
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,25 +18,29 @@
 */
 package com.rapidminer.operator.repository;
 
+import java.util.List;
+
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeRepositoryLocation;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.Entry;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
-
-import java.util.List;
+import com.rapidminer.repository.RepositoryLocationType;
 
 
 /**
- * An operator to delete repository entries within a process. If the entry does not exists it won't
- * throw an error but continue silently.
- * 
- * 
+ * An operator to delete repository entries within a process. If the entry does not exists it won't throw an error but
+ * continue silently.
+ * <p>
+ * Since version 9.7: To cover situations where both a folder and a file exist with the same name, they will prefer the
+ * file. They will only work on folder level if no file with that name exists.
+ * </p>
+ *
  * @author Nils Woehler
- * 
  */
 public class RepositoryEntryDeleteOperator extends AbstractRepositoryManagerOperator {
 
@@ -50,11 +54,16 @@ public class RepositoryEntryDeleteOperator extends AbstractRepositoryManagerOper
 	public void doWork() throws OperatorException {
 		super.doWork();
 
-		RepositoryLocation repoLoc = getParameterAsRepositoryLocation(ELEMENT_TO_DELETE);
+		RepositoryLocation repoLoc = getParameterAsRepositoryLocationData(ELEMENT_TO_DELETE, DataEntry.class);
+		// could also be a folder, so change location type to UNKNOWN
+		repoLoc.setLocationType(RepositoryLocationType.UNKNOWN);
 
 		Entry locateEntry;
 		try {
-			locateEntry = repoLoc.locateEntry();
+			locateEntry = repoLoc.locateData();
+			if (locateEntry == null) {
+				locateEntry = repoLoc.locateFolder();
+			}
 		} catch (RepositoryException e1) {
 			throw new UserError(this, e1, "302", repoLoc, e1.getMessage());
 		}
@@ -73,7 +82,9 @@ public class RepositoryEntryDeleteOperator extends AbstractRepositoryManagerOper
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
 
-		types.add(new ParameterTypeRepositoryLocation(ELEMENT_TO_DELETE, "Element that should be deleted", true, true, false));
+		ParameterType type = new ParameterTypeRepositoryLocation(ELEMENT_TO_DELETE, "Element that should be deleted", true, true, false);
+		type.setPrimary(true);
+		types.add(type);
 
 		return types;
 	}

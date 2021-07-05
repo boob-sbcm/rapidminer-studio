@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.repository.local;
 
 import java.io.BufferedInputStream;
@@ -28,11 +28,12 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
+import com.rapidminer.adaption.belt.TableViewingTools;
 import com.rapidminer.operator.IOObject;
 import com.rapidminer.operator.Operator;
-import com.rapidminer.operator.ports.metadata.AttributeMetaData;
-import com.rapidminer.operator.ports.metadata.ExampleSetMetaData;
 import com.rapidminer.operator.ports.metadata.MetaData;
 import com.rapidminer.operator.tools.ExampleSetToStream;
 import com.rapidminer.operator.tools.IOObjectSerializer;
@@ -40,36 +41,52 @@ import com.rapidminer.operator.tools.RMObjectInputStream;
 import com.rapidminer.repository.Folder;
 import com.rapidminer.repository.IOObjectEntry;
 import com.rapidminer.repository.RepositoryException;
+import com.rapidminer.repository.versioned.IOObjectClassDetector;
 import com.rapidminer.tools.ProgressListener;
 import com.rapidminer.tools.plugin.Plugin;
+
+import sun.misc.ObjectInputFilter.Config;
 
 
 /**
  * Stores IOObject in a file. Either as IOO serialized files using {@link ExampleSetToStream} where
  * appropriate.
  *
- * @author Simon Fischer
+ * @author Simon Fischer, Jan Czogalla
  */
 public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntry {
-
-	private static final String MD_SUFFIX = ".md";
-	private static final String IOO_SUFFIX = ".ioo";
 
 	private static final String PROPERTY_IOOBJECT_CLASS = "ioobject-class";
 
 	private WeakReference<MetaData> metaData = null;
 	private Class<? extends IOObject> dataObjectClass = null;
 
-	SimpleIOObjectEntry(String name, SimpleFolder containingFolder, LocalRepository repository) {
+	public SimpleIOObjectEntry(String name, SimpleFolder containingFolder, LocalRepository repository) {
 		super(name, containingFolder, repository);
 	}
 
-	private File getDataFile() {
-		return new File(((SimpleFolder) getContainingFolder()).getFile(), getName() + IOO_SUFFIX);
+	@Override
+	public String getSuffix() {
+		return IOO_SUFFIX;
 	}
 
+
+	/**
+	 * Suffix for the specialized {@link MetaData} of this type, like {@value #MD_SUFFIX}.
+	 *
+	 * @since 9.3
+	 */
+	protected String getMetaDataSuffix() {
+		return MD_SUFFIX;
+	}
+
+	/**
+	 * Returns the file associated with this entry's {@link MetaData}.
+	 *
+	 * @see #getMetaDataSuffix()
+	 */
 	protected File getMetaDataFile() {
-		return new File(((SimpleFolder) getContainingFolder()).getFile(), getName() + MD_SUFFIX);
+		return getFile(getMetaDataSuffix());
 	}
 
 	@Override
@@ -80,22 +97,26 @@ public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntr
 		}
 		File dataFile = getDataFile();
 		if (dataFile.exists()) {
-			BufferedInputStream in = null;
-			try {
-				in = new BufferedInputStream(new FileInputStream(dataFile));
-				return (IOObject) IOObjectSerializer.getInstance().deserialize(in);
+			try (FileInputStream fis = new FileInputStream(dataFile)) {
+				return readDataFromFile(fis);
 			} catch (Exception e) {
 				throw new RepositoryException("Cannot load data from '" + dataFile + "': " + e, e);
-			} finally {
-				if (in != null) {
-					try {
-						in.close();
-					} catch (IOException e) {
-					}
-				}
 			}
 		} else {
 			throw new RepositoryException("File '" + dataFile + " does not exist'.");
+		}
+	}
+
+	/**
+	 * Read the actual IOObject from the given {@link FileInputStream}.
+	 *
+	 * @throws IOException
+	 * 		if an error occurs
+	 * @since 9.3
+	 */
+	protected IOObject readDataFromFile(FileInputStream fis) throws IOException {
+		try (BufferedInputStream in = new BufferedInputStream(fis)) {
+			return (IOObject) IOObjectSerializer.getInstance().deserialize(in);
 		}
 	}
 
@@ -109,34 +130,56 @@ public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntr
 		}
 		// otherwise metaData == null OR get() == null -> re-read
 		MetaData readObject;
+		checkMetaDataFile();
 		File metaDataFile = getMetaDataFile();
-		if (metaDataFile.exists()) {
-			ObjectInputStream objectIn = null;
-			try {
-				objectIn = new RMObjectInputStream(new FileInputStream(metaDataFile));
-				readObject = (MetaData) objectIn.readObject();
-				this.metaData = new WeakReference<>(readObject);
-				if (readObject instanceof ExampleSetMetaData) {
-					for (AttributeMetaData amd : ((ExampleSetMetaData) readObject).getAllAttributes()) {
-						if (amd.isNominal()) {
-							amd.shrinkValueSet();
-						}
-					}
-				}
-			} catch (Exception e) {
-				throw new RepositoryException("Cannot load meta data from '" + metaDataFile + "': " + e, e);
-			} finally {
-				if (objectIn != null) {
-					try {
-						objectIn.close();
-					} catch (IOException e) {
-					}
-				}
-			}
-		} else {
+		if (!metaDataFile.exists()) {
 			throw new RepositoryException("Meta data file '" + metaDataFile + " does not exist'.");
 		}
+		try {
+			readObject = readMetaDataObject(metaDataFile);
+			MetaData.shrinkValues(readObject);
+			this.metaData = new WeakReference<>(readObject);
+		} catch (Exception e) {
+			throw new RepositoryException("Cannot load meta data from '" + metaDataFile + "': " + e, e);
+		}
 		return readObject;
+	}
+
+	/**
+	 * Before handing out the metadata from a file this method is invoked to perform a check on the filesystem level, for
+	 * instance if creation of a missing metadata file should be done.
+	 *
+	 * @since 9.3
+	 */
+	protected void checkMetaDataFile() {
+		// noop
+	}
+
+	/**
+	 * Re-usability for {@link MetaData} retrieval by overriding this method that returns the {@link MetaData} which
+	 * should be contained in the given file.
+	 *
+	 * @param metaDataFile
+	 * 		{@link File} to load that contains previously stored {@link MetaData}
+	 * @return the {@link MetaData} object loaded from the metaDataFile
+	 * @throws IOException
+	 * 		if reading failed
+	 * @throws ClassNotFoundException
+	 * 		if reading failed
+	 * @since 9.3
+	 */
+	MetaData readMetaDataObject(File metaDataFile) throws IOException, ClassNotFoundException {
+		try (FileInputStream fis = new FileInputStream(metaDataFile);
+			 ObjectInputStream objectIn = new RMObjectInputStream(fis)) {
+			// lift deserialize restriction
+			AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+				Config.setObjectInputFilter(objectIn, null);
+				return null;
+			});
+			return (MetaData) objectIn.readObject();
+		} catch (ClassNotFoundException e) {
+			throw new IOException("Deserialized unknown class: " + e, e);
+		}
 	}
 
 	@Override
@@ -145,55 +188,57 @@ public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntr
 			l.setTotal(100);
 			l.setCompleted(10);
 		}
+		boolean existed = getDataFile().exists();
 		MetaData md = MetaData.forIOObject(data);
 		// Serialize Non-ExampleSets as IOO
-		OutputStream out = null;
-		try {
-			out = new BufferedOutputStream(new FileOutputStream(getDataFile()));
-			IOObjectSerializer.getInstance().serialize(out, data);
+		try (FileOutputStream fos = new FileOutputStream(getDataFile())) {
+			writeDataToFile(data, fos);
 			if (l != null) {
 				l.setCompleted(75);
 			}
 		} catch (Exception e) {
 			throw new RepositoryException("Cannot store data at '" + getDataFile() + "': " + e, e);
-		} finally {
-			if (out != null) {
-				try {
-					out.close();
-				} catch (IOException e) {
-				}
-			}
 		}
 		// Save MetaData
-		ObjectOutputStream mdOut = null;
-		try {
-			mdOut = new ObjectOutputStream(new FileOutputStream(getMetaDataFile()));
-			mdOut.writeObject(md);
-			mdOut.close();
+		try (FileOutputStream fos = new FileOutputStream(getMetaDataFile())) {
+			writeMetaDataToFile(md, fos);
 			if (l != null) {
 				l.setCompleted(90);
 			}
 		} catch (Exception e) {
 			throw new RepositoryException("Cannot store data at '" + getMetaDataFile() + "': " + e, e);
 		} finally {
-			if (mdOut != null) {
-				try {
-					mdOut.close();
-				} catch (IOException e) {
-				}
-			}
 			if (l != null) {
 				l.setCompleted(100);
 				l.complete();
 			}
 		}
 		this.metaData = new WeakReference<>(md);
-		putProperty(PROPERTY_IOOBJECT_CLASS, data.getClass().getName());
+		putProperty(PROPERTY_IOOBJECT_CLASS, TableViewingTools.replaceTableClassName(data));
+
+		if (existed) {
+			getRepository().fireEntryChanged(this);
+		}
 	}
 
-	@Override
-	public String getType() {
-		return IOObjectEntry.TYPE_NAME;
+	/**
+	 * Takes care of the actual storing of the {@link IOObject} in a file.
+	 * @since 9.3
+	 */
+	protected void writeDataToFile(IOObject data, FileOutputStream fos) throws IOException, RepositoryException {
+		try (OutputStream out = new BufferedOutputStream(fos)) {
+			IOObjectSerializer.getInstance().serialize(out, data);
+		}
+	}
+
+	/**
+	 * Takes care of the actual storing of the {@link MetaData} in a file.
+	 * @since 9.3
+	 */
+	protected void writeMetaDataToFile(MetaData md, FileOutputStream fos) throws IOException {
+		try (ObjectOutputStream mdOut = new ObjectOutputStream(fos)) {
+			mdOut.writeObject(md);
+		}
 	}
 
 	@Override
@@ -202,28 +247,23 @@ public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntr
 			MetaData md = metaData.get();
 			if (md != null) {
 				return md.getDescription();
-			} else {
-				return "Simple entry.";
 			}
-		} else {
-			return "Simple entry.";
 		}
+		return getDefaultDescription();
 	}
 
-	@Override
-	public long getSize() {
-		if (getDataFile().exists()) {
-			return getDataFile().length();
-		} else {
-			return 0;
-		}
+	/**
+	 * Get a description for this entry.
+	 *
+	 * @return very short description, basically the name of this entry type
+	 * @since 9.3
+	 */
+	protected String getDefaultDescription() {
+		return "Simple entry.";
 	}
 
 	@Override
 	public void delete() throws RepositoryException {
-		if (getDataFile().exists()) {
-			getDataFile().delete();
-		}
 		if (getMetaDataFile().exists()) {
 			getMetaDataFile().delete();
 		}
@@ -232,19 +272,14 @@ public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntr
 
 	@Override
 	protected void handleRename(String newName) throws RepositoryException {
-		renameFile(getDataFile(), newName);
+		super.handleRename(newName);
 		renameFile(getMetaDataFile(), newName);
 	}
 
 	@Override
 	protected void handleMove(Folder newParent, String newName) throws RepositoryException {
-		moveFile(getDataFile(), ((SimpleFolder) newParent).getFile(), newName, IOO_SUFFIX);
-		moveFile(getMetaDataFile(), ((SimpleFolder) newParent).getFile(), newName, MD_SUFFIX);
-	}
-
-	@Override
-	public long getDate() {
-		return getDataFile().lastModified();
+		super.handleMove(newParent, newName);
+		moveFile(getMetaDataFile(), ((SimpleFolder) newParent).getFile(), newName, getMetaDataSuffix());
 	}
 
 	@Override
@@ -255,35 +290,44 @@ public class SimpleIOObjectEntry extends SimpleDataEntry implements IOObjectEntr
 	@SuppressWarnings("unchecked")
 	@Override
 	public Class<? extends IOObject> getObjectClass() {
-		if (dataObjectClass == null) {
-			// first try from properties file
-			String className = getProperty(PROPERTY_IOOBJECT_CLASS);
-			if (className != null) {
+		if (dataObjectClass != null) {
+			return dataObjectClass;
+		}
+		// first try from properties file
+		String className = getProperty(PROPERTY_IOOBJECT_CLASS);
+		if (className != null) {
+			try {
+				dataObjectClass = (Class<? extends IOObject>) Class.forName(className);
+				return dataObjectClass;
+			} catch (ClassNotFoundException e) {
 				try {
-					dataObjectClass = (Class<? extends IOObject>) Class.forName(className);
+					dataObjectClass = (Class<? extends IOObject>) Class.forName(className, false,
+							Plugin.getMajorClassLoader());
 					return dataObjectClass;
-				} catch (ClassNotFoundException e) {
-					try {
-						dataObjectClass = (Class<? extends IOObject>) Class.forName(className, false,
-								Plugin.getMajorClassLoader());
-						return dataObjectClass;
-					} catch (ClassNotFoundException e1) {
-						return null;
-					}
-				}
-			} else {
-				// if not yet defined, retrieve it from meta data and store in properties
-				try {
-					dataObjectClass = retrieveMetaData().getObjectClass();
-					if (dataObjectClass != null) {
-						putProperty(PROPERTY_IOOBJECT_CLASS, dataObjectClass.getName());
-					}
-					return dataObjectClass;
-				} catch (RepositoryException e) {
+				} catch (ClassNotFoundException e1) {
 					return null;
 				}
 			}
 		}
-		return dataObjectClass;
+		// try using the serialized data next
+		File dataFile = getDataFile();
+		if (dataFile.exists()) {
+			Class<? extends IOObject> readClass = IOObjectClassDetector.findClass(dataFile.toPath());
+			if (readClass != null && readClass != IOObject.class) {
+				dataObjectClass = readClass;
+				putProperty(PROPERTY_IOOBJECT_CLASS, dataObjectClass.getName());
+				return dataObjectClass;
+			}
+		}
+		// if not yet defined, retrieve it from meta data and store in properties
+		try {
+			dataObjectClass = retrieveMetaData().getObjectClass();
+			if (dataObjectClass != null) {
+				putProperty(PROPERTY_IOOBJECT_CLASS, dataObjectClass.getName());
+			}
+			return dataObjectClass;
+		} catch (RepositoryException e) {
+			return null;
+		}
 	}
 }

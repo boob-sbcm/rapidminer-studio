@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,6 +23,4 @@ package com.rapidminer.operator.ports;
  * @author Simon Fischer
  * 
  */
-public interface OutputPorts extends Ports<OutputPort> {
-
-}
+public interface OutputPorts extends Ports<OutputPort> {}

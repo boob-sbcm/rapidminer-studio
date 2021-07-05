@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -17,6 +17,11 @@
  * If not, see http://www.gnu.org/licenses/.
 */
 package com.rapidminer.repository.gui.actions;
+
+import java.awt.event.ActionEvent;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 
 import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.SwingTools;
@@ -36,6 +41,19 @@ public class RefreshRepositoryEntryAction extends AbstractRepositoryAction<Entry
 
 	public RefreshRepositoryEntryAction(RepositoryTree tree) {
 		super(tree, Entry.class, false, "repository_refresh_folder");
+	}
+
+	@Override
+	public void loggedActionPerformed(ActionEvent e) {
+		List<Entry> folders = new ArrayList<>();
+		//Don't trigger a folder refresh for every selected data entry
+		for (Entry entry : tree.getSelectedEntries()){
+			folders.add(entry instanceof Folder ? entry : entry.getContainingFolder());
+		}
+		// use hashset to eliminate duplicates
+		for (Entry entry : new HashSet<>(removeIntersectedEntries(folders))) {
+			actionPerformed(entry);
+		}
 	}
 
 	@Override

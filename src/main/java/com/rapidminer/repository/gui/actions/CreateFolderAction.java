@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,14 +18,17 @@
 */
 package com.rapidminer.repository.gui.actions;
 
+import java.nio.file.InvalidPathException;
+import javax.swing.SwingUtilities;
+
 import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.repository.Folder;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
+import com.rapidminer.repository.RepositoryLocationType;
 import com.rapidminer.repository.gui.RepositoryTree;
-
-import javax.swing.SwingUtilities;
 
 
 /**
@@ -38,7 +41,7 @@ public class CreateFolderAction extends AbstractRepositoryAction<Folder> {
 	private static final long serialVersionUID = 1L;
 
 	public CreateFolderAction(RepositoryTree tree) {
-		super(tree, Folder.class, false, "repository_create_folder");
+		super(tree, Folder.class, true, "repository_create_folder");
 	}
 
 	@Override
@@ -51,15 +54,10 @@ public class CreateFolderAction extends AbstractRepositoryAction<Folder> {
 				if (name != null) {
 					try {
 						folder.createFolder(name);
-						final RepositoryLocation location = new RepositoryLocation(folder.getLocation(), name);
-						SwingUtilities.invokeLater(new Runnable() {
-
-							@Override
-							public void run() {
-								tree.expandAndSelectIfExists(location);
-							}
-
-						});
+						final RepositoryLocation location = new RepositoryLocationBuilder().withLocationType(RepositoryLocationType.FOLDER).buildFromParentLocation(folder.getLocation(), name);
+						SwingUtilities.invokeLater(() -> tree.expandAndSelectIfExists(location));
+					} catch(InvalidPathException e) {
+						SwingTools.showVerySimpleErrorMessage("cannot_create_folder_invalid_name_for_os", name);
 					} catch (RepositoryException e) {
 						SwingTools.showSimpleErrorMessage("cannot_create_folder_with_reason", e, name, e.getMessage());
 					} catch (Exception e) {

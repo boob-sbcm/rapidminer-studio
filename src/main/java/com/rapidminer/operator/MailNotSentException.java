@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -57,7 +57,7 @@ public class MailNotSentException extends Exception {
 	 *            for formatting I18N messages
 	 */
 	public MailNotSentException(String message, Throwable cause, String errorKey, Object... arguments) {
-		super(message);
+		super(message, cause);
 		this.errorKey = errorKey;
 		this.arguments = arguments;
 	}

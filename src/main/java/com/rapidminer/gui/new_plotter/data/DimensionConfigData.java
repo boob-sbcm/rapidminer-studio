@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,12 +18,18 @@
 */
 package com.rapidminer.gui.new_plotter.data;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Level;
+
 import com.rapidminer.datatable.DataTable;
 import com.rapidminer.datatable.DataTableRow;
 import com.rapidminer.gui.new_plotter.ConfigurationChangeResponse;
 import com.rapidminer.gui.new_plotter.PlotConfigurationError;
 import com.rapidminer.gui.new_plotter.PlotConfigurationQuickFix;
-import com.rapidminer.gui.new_plotter.StaticDebug;
 import com.rapidminer.gui.new_plotter.configuration.DataTableColumn;
 import com.rapidminer.gui.new_plotter.configuration.DataTableColumn.ValueType;
 import com.rapidminer.gui.new_plotter.configuration.DefaultDimensionConfig;
@@ -44,18 +50,12 @@ import com.rapidminer.gui.new_plotter.utility.ValueRange;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-import java.util.logging.Level;
-
 
 /**
  * @author Marius Helf, Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class DimensionConfigData {
 
 	private PlotInstance plotInstance;
@@ -368,8 +368,6 @@ public class DimensionConfigData {
 
 			if (Double.isNaN(cachedMaxValue)) {
 				updateValueCache();
-				debug(getDimensionConfig().getDimension() + " min: " + cachedMinValue);
-				debug(getDimensionConfig().getDimension() + " max: " + cachedMaxValue);
 			}
 
 			effectiveMin = cachedMinValue;
@@ -499,8 +497,6 @@ public class DimensionConfigData {
 		PlotDimension dimension = e.getSource().getDimension();
 		DimensionConfig dimConf = plotInstance.getCurrentPlotConfigurationClone().getDimensionConfig(dimension);
 		if (dimConf == null) {
-			debug("DimensionConfigData: ### ATTENTION #### DimensionConfig for dimension " + dimension
-					+ " is null! Meta change event?");
 			return;
 		}
 
@@ -516,15 +512,10 @@ public class DimensionConfigData {
 				invalidateFormatProviders();
 				break;
 			case COLOR_SCHEME:
-				debug("Color scheme has changed. " + this + " invalidate format providers");
 				invalidateFormatProviders();
 				break;
 			default:
 		}
-	}
-
-	private void debug(String string) {
-		StaticDebug.debug("DimensionConfigData: " + getDimensionConfig().getDimension() + " " + string);
 	}
 
 	public List<PlotConfigurationError> getErrors() {

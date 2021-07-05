@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -35,7 +35,9 @@ import org.jfree.data.xy.XYZDataset;
  * This is the scatter plotter based on JFreeChart.
  * 
  * @author Ingo Mierswa
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class ScatterPlotter2 extends Abstract2DChartPlotter {
 
 	private static final long serialVersionUID = 6535057074946396896L;

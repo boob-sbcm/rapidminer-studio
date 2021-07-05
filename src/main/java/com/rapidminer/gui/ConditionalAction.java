@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui;
 
 import java.lang.ref.WeakReference;
@@ -23,7 +23,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
-import javax.swing.AbstractAction;
 import javax.swing.Icon;
 import javax.swing.SwingUtilities;
 
@@ -32,17 +31,17 @@ import javax.swing.SwingUtilities;
  * An action that must be enabled/disabled depending on certain conditions. These conditions can be
  * mandatory, disallowed, or irrelevant. All ConditionalActions created are added to a collection
  * and there status is automatically checked if the condition premises might have changed.
- * 
+ *
  * @author Ingo Mierswa, Simon Fischer
  */
-public abstract class ConditionalAction extends AbstractAction {
+public abstract class ConditionalAction extends LoggedAbstractAction {
 
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = -3581066203343247846L;
 
-	private static final List<WeakReference<ConditionalAction>> ALL_ACTIONS = new LinkedList<WeakReference<ConditionalAction>>();
+	private static final List<WeakReference<ConditionalAction>> ALL_ACTIONS = new LinkedList<>();
 
 	/* The possible states. */
 	public static final int DISALLOWED = -1;
@@ -77,6 +76,9 @@ public abstract class ConditionalAction extends AbstractAction {
 
 	public static final int PROCESS_IS_ON_REMOTE_REPOSITORY = 10;
 
+	/**
+	 * Process is stored and editable
+	 */
 	public static final int PROCESS_SAVED = 11;
 
 	public static final int PROCESS_RENDERER_IS_VISIBLE = 12;
@@ -85,7 +87,15 @@ public abstract class ConditionalAction extends AbstractAction {
 
 	public static final int PROCESS_RENDERER_HAS_REDO_STEPS = 14;
 
-	public static final int NUMBER_OF_CONDITIONS = 15;
+	public static final int PROCESS_HAS_BREAKPOINTS = 15;
+
+	/**
+	 * Process has a repository location
+	 * @since 9.0.2
+	 */
+	public static final int PROCESS_HAS_REPOSITORY_LOCATION = 16;
+
+	public static final int NUMBER_OF_CONDITIONS = 17;
 
 	private final int[] conditions = new int[NUMBER_OF_CONDITIONS];
 
@@ -99,13 +109,13 @@ public abstract class ConditionalAction extends AbstractAction {
 		super(name, icon);
 		conditions[EDIT_IN_PROGRESS] = DISALLOWED;
 		if (SwingUtilities.isEventDispatchThread()) {
-			ALL_ACTIONS.add(new WeakReference<ConditionalAction>(this));
+			ALL_ACTIONS.add(new WeakReference<>(this));
 		} else {
 			SwingUtilities.invokeLater(new Runnable() {
 
 				@Override
 				public void run() {
-					ALL_ACTIONS.add(new WeakReference<ConditionalAction>(ConditionalAction.this));
+					ALL_ACTIONS.add(new WeakReference<>(ConditionalAction.this));
 				}
 			});
 		}
@@ -171,7 +181,7 @@ public abstract class ConditionalAction extends AbstractAction {
 
 	/**
 	 * If set to <code>true</code>, will not enable itself to condition changes.
-	 * 
+	 *
 	 * @param isDisabledDueToFocusLost
 	 */
 	public void setDisabledDueToFocusLost(boolean isDisabledDueToFocusLost) {

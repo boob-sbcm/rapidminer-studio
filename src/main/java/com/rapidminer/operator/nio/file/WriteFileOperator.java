@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,13 @@
 */
 package com.rapidminer.operator.nio.file;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.List;
+
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
@@ -30,18 +37,12 @@ import com.rapidminer.parameter.ParameterTypeFile;
 import com.rapidminer.parameter.ParameterTypeRepositoryLocation;
 import com.rapidminer.parameter.ParameterTypeStringCategory;
 import com.rapidminer.parameter.conditions.EqualTypeCondition;
+import com.rapidminer.repository.BinaryEntry;
 import com.rapidminer.repository.BlobEntry;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
 import com.rapidminer.repository.RepositoryManager;
 import com.rapidminer.tools.Tools;
-
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.List;
 
 
 /**
@@ -92,12 +93,26 @@ public class WriteFileOperator extends Operator {
 					}
 					break;
 				case DESTINATION_TYPE_REPOSITORY:
-					RepositoryLocation location = getParameterAsRepositoryLocation(PARAMETER_REPOSITORY_LOCATION);
+					String loc = getParameterAsString(PARAMETER_REPOSITORY_LOCATION);
+					// if location does not contain a suffix, try to add it if we still know it
+					if (!loc.contains(".")) {
+						String originalFileName = fileObject.getFilename();
+						if (originalFileName != null && originalFileName.contains(".") && !originalFileName.endsWith(".")) {
+							String suffix = originalFileName.substring(originalFileName.lastIndexOf("."));
+							loc += suffix;
+						}
+					}
+					RepositoryLocation location = RepositoryLocation.getRepositoryLocationData(loc, this, BinaryEntry.class);
 					destName = location.toString();
 					try {
-						BlobEntry blob = RepositoryManager.getInstance(getProcess().getRepositoryAccessor())
-								.getOrCreateBlob(location);
-						out = blob.openOutputStream(getParameterAsString(PARAMETER_MIME_TYPE));
+						if (location.getRepository().isSupportingBinaryEntries()) {
+							BinaryEntry binEntry = RepositoryManager.getInstance(getProcess().getRepositoryAccessor()).getOrCreateBinaryEntry(location);
+							out = binEntry.openOutputStream();
+						} else {
+							location.setExpectedDataEntryType(BlobEntry.class);
+							BlobEntry blobEntry = RepositoryManager.getInstance(getProcess().getRepositoryAccessor()).getOrCreateBlob(location);
+							out = blobEntry.openOutputStream(getParameterAsString(PARAMETER_MIME_TYPE));
+						}
 					} catch (RepositoryException e) {
 						throw new UserError(this, 315, location, e);
 					}
@@ -111,19 +126,13 @@ public class WriteFileOperator extends Operator {
 				Tools.copyStreamSynchronously(fileObject.openStream(), out, true);
 			} catch (IOException e) {
 				throw new UserError(this, 322, destName, e);
-			} finally {
-				if (out != null) {
-					try {
-						out.close();
-					} catch (IOException e) {
-					}
-				}
 			}
 		} finally {
 			if (out != null) {
 				try {
 					out.close();
 				} catch (IOException e) {
+					// nothing we can do
 				}
 			}
 		}
@@ -137,13 +146,14 @@ public class WriteFileOperator extends Operator {
 
 		parameterTypes
 				.add(new ParameterTypeCategory(PARAMETER_DESTINATION_TYPE,
-						"Choose wether to open a file, a URL or a repository entry.", DESTINATION_TYPES,
+						"Choose whether to open a file, a URL or a repository entry.", DESTINATION_TYPES,
 						DESTINATION_TYPE_FILE, true));
 
 		ParameterTypeFile parameterTypeFile = new ParameterTypeFile(PARAMETER_FILENAME, "File to save to.", null, true,
 				false);
 		parameterTypeFile.registerDependencyCondition(new EqualTypeCondition(this, PARAMETER_DESTINATION_TYPE,
 				DESTINATION_TYPES, true, DESTINATION_TYPE_FILE));
+		parameterTypeFile.setPrimary(true);
 		parameterTypes.add(parameterTypeFile);
 
 		ParameterTypeRepositoryLocation parameterTypeRepositoryLocation = new ParameterTypeRepositoryLocation(
@@ -155,7 +165,7 @@ public class WriteFileOperator extends Operator {
 		parameterTypes.add(parameterTypeRepositoryLocation);
 
 		ParameterType mimeType = new ParameterTypeStringCategory(PARAMETER_MIME_TYPE,
-				"If saved to the repository, this specifies the mime type to assign to the blob.", MIME_TYPES,
+				"If saved to a legacy repository or an AI Hub repository, this specifies the mime type to assign to the blob. Ignored if saving to a new local repository or a versioned project.", MIME_TYPES,
 				MIME_TYPE_OCTESTSTREAM);
 		mimeType.setExpert(true);
 		mimeType.registerDependencyCondition(new EqualTypeCondition(this, PARAMETER_DESTINATION_TYPE, DESTINATION_TYPES,

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -36,7 +36,9 @@ import com.rapidminer.tools.math.MathFunctions;
  * This symbol axis draws a yellowisch background according to the axis weight.
  *
  * @author Ingo Mierswa
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class WeightBasedSymbolAxis extends SymbolAxis {
 
 	private static final long serialVersionUID = -2836199514919011137L;

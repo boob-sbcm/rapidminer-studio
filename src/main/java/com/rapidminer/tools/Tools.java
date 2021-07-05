@@ -1,22 +1,24 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
 */
 package com.rapidminer.tools;
+
+import static com.rapidminer.tools.FunctionWithThrowable.suppress;
 
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
@@ -34,10 +36,17 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.io.StreamTokenizer;
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.AccessControlException;
+import java.security.AccessController;
 import java.text.DateFormat;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -47,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -58,7 +68,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
-import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.logging.Level;
 import java.util.regex.Matcher;
@@ -66,14 +75,13 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringEscapeUtils;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXException;
@@ -84,6 +92,7 @@ import com.rapidminer.gui.MainFrame;
 import com.rapidminer.gui.RapidMinerGUI;
 import com.rapidminer.gui.tools.VersionNumber;
 import com.rapidminer.io.process.XMLImporter;
+import com.rapidminer.io.process.XMLTools;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorException;
 import com.rapidminer.operator.ProcessStoppedException;
@@ -92,9 +101,10 @@ import com.rapidminer.operator.internal.ProcessEmbeddingOperator;
 import com.rapidminer.operator.ports.InputPort;
 import com.rapidminer.operator.ports.OutputPort;
 import com.rapidminer.parameter.UndefinedParameterError;
-import com.rapidminer.repository.Entry;
+import com.rapidminer.repository.ProcessEntry;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.security.PluginSandboxPolicy;
 import com.rapidminer.tools.io.Encoding;
 import com.rapidminer.tools.parameter.ParameterChangeListener;
 import com.rapidminer.tools.plugin.Plugin;
@@ -122,42 +132,30 @@ public class Tools {
 	// ThreadLocal because DateFormat is NOT threadsafe and creating a new DateFormat is
 	// EXTREMELY expensive
 	/** Used for formatting values in the {@link #formatTime(Date)} method. */
-	private static final ThreadLocal<DateFormat> TIME_FORMAT = new ThreadLocal<DateFormat>() {
-
-		@Override
-		protected DateFormat initialValue() {
-			// clone because getDateInstance uses an internal pool which can return the same
-			// instance for multiple threads
-			return (DateFormat) DateFormat.getTimeInstance(DateFormat.LONG, Locale.getDefault()).clone();
-		}
-	};
+	private static final ThreadLocal<DateFormat> TIME_FORMAT = ThreadLocal.withInitial(() -> {
+		// clone because getDateInstance uses an internal pool which can return the same
+		// instance for multiple threads
+		return (DateFormat) DateFormat.getTimeInstance(DateFormat.LONG, Locale.getDefault()).clone();
+	});
 
 	// ThreadLocal because DateFormat is NOT threadsafe and creating a new DateFormat is
 	// EXTREMELY expensive
 	/** Used for formatting values in the {@link #formatDate(Date)} method. */
-	private static final ThreadLocal<DateFormat> DATE_FORMAT = new ThreadLocal<DateFormat>() {
-
-		@Override
-		protected DateFormat initialValue() {
-			// clone because getDateInstance uses an internal pool which can return the same
-			// instance for multiple threads
-			return (DateFormat) DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).clone();
-		}
-	};
+	private static final ThreadLocal<DateFormat> DATE_FORMAT = ThreadLocal.withInitial(() -> {
+		// clone because getDateInstance uses an internal pool which can return the same
+		// instance for multiple threads
+		return (DateFormat) DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).clone();
+	});
 
 	// ThreadLocal because DateFormat is NOT threadsafe and creating a new DateFormat is
 	// EXTREMELY expensive
 	/** Used for formatting values in the {@link #formatDateTime(Date)} method. */
-	public static final ThreadLocal<DateFormat> DATE_TIME_FORMAT = new ThreadLocal<DateFormat>() {
-
-		@Override
-		protected DateFormat initialValue() {
-			// clone because getDateInstance uses an internal pool which can return the same
-			// instance for multiple threads
-			return (DateFormat) DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.LONG, Locale.getDefault())
-					.clone();
-		}
-	};
+	public static final ThreadLocal<DateFormat> DATE_TIME_FORMAT = ThreadLocal.withInitial(() -> {
+		// clone because getDateInstance uses an internal pool which can return the same
+		// instance for multiple threads
+		return (DateFormat) DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.LONG, Locale.getDefault())
+				.clone();
+	});
 
 	private static Locale FORMAT_LOCALE = Locale.US;
 
@@ -188,7 +186,8 @@ public class Tools {
 	/** the current settings value of number of fraction digits shown */
 	private static int numberOfFractionDigits;
 
-	private static final LinkedList<ResourceSource> ALL_RESOURCE_SOURCES = new LinkedList<>();
+	private static final List<ResourceSource> ALL_RESOURCE_SOURCES = Collections.synchronizedList(new LinkedList<>());
+	private static final Map<String, ResourceSource> PLUGIN_RESOURCE_SOURCES = Collections.synchronizedMap(new HashMap<>());
 
 	public static final String RESOURCE_PREFIX = "com/rapidminer/resources/";
 
@@ -239,12 +238,16 @@ public class Tools {
 
 	public static final int SYSTEM_TIME_ZONE = 0;
 
+	public static final String SYSTEM_TIME_ZONE_NAME = "SYSTEM";
+
+	private static final int COPY_BUFFER_SIZE = 1024 * 20;
+
 	static {
 		String[] allTimeZoneNames = TimeZone.getAvailableIDs();
 		Arrays.sort(allTimeZoneNames);
 
 		availableTimeZoneNames = new String[allTimeZoneNames.length + 1];
-		availableTimeZoneNames[SYSTEM_TIME_ZONE] = "SYSTEM";
+		availableTimeZoneNames[SYSTEM_TIME_ZONE] = SYSTEM_TIME_ZONE_NAME;
 		System.arraycopy(allTimeZoneNames, 0, availableTimeZoneNames, 1, allTimeZoneNames.length);
 	}
 
@@ -461,7 +464,7 @@ public class Tools {
 	 * Format double value as a short time string. If value is NaN, returns {@value #MISSING_TIME}.
 	 *
 	 * @param value
-	 *            the value to be formatted as time
+	 * 		the value to be formatted as time
 	 * @return a short time string or {@value #MISSING_TIME} if value was NaN
 	 * @since 6.1.1
 	 */
@@ -474,7 +477,9 @@ public class Tools {
 		}
 	}
 
-	/** Format date as a short date string. */
+	/**
+	 * Format date as a short date string.
+	 */
 	public static String formatDate(Date date) {
 		DATE_FORMAT.get().setTimeZone(getPreferredTimeZone());
 		return DATE_FORMAT.get().format(date);
@@ -484,7 +489,7 @@ public class Tools {
 	 * Format double value as a short date string. If value is NaN, returns {@value #MISSING_DATE}.
 	 *
 	 * @param value
-	 *            the value to be formatted as a date
+	 * 		the value to be formatted as a date
 	 * @return a short date string or {@value #MISSING_DATE} if value was NaN
 	 * @since 6.1.1
 	 */
@@ -508,7 +513,7 @@ public class Tools {
 	 * {@value #MISSING_DATE}.
 	 *
 	 * @param value
-	 *            the value to be formatted as datetime
+	 * 		the value to be formatted as datetime
 	 * @return a short datetime string or {@value #MISSING_DATE} if value was NaN
 	 * @since 6.1.1
 	 */
@@ -682,7 +687,7 @@ public class Tools {
 		if (number < 0) {
 			number = 0;
 		}
-		StringBuffer result = new StringBuffer();
+		StringBuilder result = new StringBuilder();
 		for (int i = 0; i < number; i++) {
 			result.append(LINE_SEPARATOR);
 		}
@@ -730,7 +735,7 @@ public class Tools {
 	 * Clones a {@link List} of {@link Operator}s including connections.
 	 *
 	 * @param operators
-	 *            List of operators.
+	 * 		List of operators.
 	 * @return Cloned list of operators.
 	 */
 	public static List<Operator> cloneOperators(List<Operator> operators) {
@@ -800,7 +805,7 @@ public class Tools {
 	 * Reads the output of the reader and delivers it as string.
 	 */
 	public static String readOutput(BufferedReader in) throws IOException {
-		StringBuffer output = new StringBuffer();
+		StringBuilder output = new StringBuilder();
 		String line = null;
 		while ((line = in.readLine()) != null) {
 			output.append(line);
@@ -918,15 +923,60 @@ public class Tools {
 		int lastSeparatorIndex = canonicalFirstPath.substring(0, index).lastIndexOf(File.separator);
 		if (lastSeparatorIndex != -1) {
 			String absRest = canonicalSecondPath.substring(lastSeparatorIndex + 1);
-			StringBuffer relPathBuffer = new StringBuffer();
-			while (absRest.indexOf(File.separator) >= 0) {
-				relPathBuffer.append(".." + File.separator);
+			StringBuilder relPathBuffer = new StringBuilder();
+			while (absRest.contains(File.separator)) {
+				relPathBuffer.append("..").append(File.separator);
 				absRest = absRest.substring(absRest.indexOf(File.separator) + 1);
 			}
 			relPathBuffer.append(canonicalFirstPath.substring(lastSeparatorIndex + 1));
 			relPath = relPathBuffer.toString();
 		}
 		return relPath;
+	}
+
+	/**
+	 * Waits for the required threads to die first. Then waits for the process to die and writes log messages.
+	 * Terminates if exit value is not 0. Terminates if the RapidMiner process execution was stopped by the user.
+	 *
+	 * @param operator
+	 * 		The current operator that will be checked for RapidMiner process execution break.
+	 * @param process
+	 * 		The process that should finish
+	 * @param name
+	 * 		Processname for logoutput.
+	 * @param threadsToBeFinishedFirst
+	 * 		The required {@link Thread Threads} to be joined before waiting for the process. Commonly used to read all outputs in those before waiting for the process itself.
+	 * @throws OperatorException
+	 * 		If the program execution failed the error will be thrown via an UserError.
+	 * @author Andreas Timm
+	 * @since 8.2
+	 */
+	public static void waitForDependentProcess(final Operator operator, final Process process, final String name, Thread... threadsToBeFinishedFirst)
+			throws OperatorException {
+		boolean allThreadsFinished = false;
+		while (!allThreadsFinished) {
+			allThreadsFinished = true;
+			for (Thread t : threadsToBeFinishedFirst) {
+				if (!t.isAlive()) {
+					continue;
+				}
+				allThreadsFinished = false;
+				try {
+					t.join(200);
+				} catch (InterruptedException e) {
+					try {
+						operator.checkForStop();
+					} catch (ProcessStoppedException e1) {
+						LogService.getRoot().log(Level.INFO, "com.rapidminer.tools.Tools.terminating_process", name);
+						process.destroy();
+						throw e1;
+					}
+					Thread.currentThread().interrupt();
+				}
+			}
+		}
+
+		waitForProcess(operator, process, name);
 	}
 
 	/**
@@ -985,16 +1035,52 @@ public class Tools {
 		if (exitValue == 0) {
 			LogService.getRoot().log(Level.FINE, "com.rapidminer.tools.Tools.process_terminated_successfully", name);
 		} else {
-			throw new UserError(operator, 306, new Object[] { name, exitValue });
+			throw new UserError(operator, 306, new Object[]{name, exitValue});
 		}
 	}
 
 	/**
-	 * @deprecated Use {@link MailUtilities#sendEmail(String,String,String)} instead
+	 * @deprecated Use {@link MailUtilities#sendEmail(String, String, String)} instead
 	 */
 	@Deprecated
 	public static void sendEmail(String address, String subject, String content) {
 		MailUtilities.sendEmail(address, subject, content);
+	}
+
+	/**
+	 * Removes the given resource source. If the resource source was not registered before, does nothing.
+	 *
+	 * @param source
+	 * 		the resource source to remove
+	 * @since 9.0.0
+	 */
+	public static void removeResourceSource(ResourceSource source) {
+		ALL_RESOURCE_SOURCES.remove(source);
+	}
+
+	/**
+	 * Sets a resource source for a plugin. Note that for the same plugin, only the last set resource source will be used!
+	 *
+	 * @param pluginKey
+	 * 		the plugin key
+	 * @param source
+	 * 		the source
+	 * @since 9.0.0
+	 */
+	public static void setResourceSourceForPlugin(String pluginKey, ResourceSource source) {
+		PLUGIN_RESOURCE_SOURCES.put(pluginKey, source);
+	}
+
+	/**
+	 * Removes the resource source of the given plugin. If the plugin resource source was not registered before, does
+	 * nothing.
+	 *
+	 * @param pluginKey
+	 * 		* 		the plugin key for which the resource source should be removed
+	 * @since 9.0.0
+	 */
+	public static void removeResourceSourceForPlugin(String pluginKey) {
+		PLUGIN_RESOURCE_SOURCES.remove(pluginKey);
 	}
 
 	/** Adds a new resource source. Might be used by plugins etc. */
@@ -1004,7 +1090,7 @@ public class Tools {
 
 	/** Adds a new resource source before the others. Might be used by plugins etc. */
 	public static void prependResourceSource(ResourceSource source) {
-		ALL_RESOURCE_SOURCES.addFirst(source);
+		ALL_RESOURCE_SOURCES.add(0, source);
 	}
 
 	public static URL getResource(ClassLoader loader, String name) {
@@ -1022,12 +1108,20 @@ public class Tools {
 	 * only allowed to use '/' as separator instead of File.separator!
 	 */
 	public static URL getResource(String name) {
-		Iterator<ResourceSource> i = ALL_RESOURCE_SOURCES.iterator();
-		while (i.hasNext()) {
-			ResourceSource source = i.next();
-			URL url = source.getResource(name);
-			if (url != null) {
-				return url;
+		synchronized (ALL_RESOURCE_SOURCES) {
+			for (ResourceSource source : ALL_RESOURCE_SOURCES) {
+				URL url = source.getResource(name);
+				if (url != null) {
+					return url;
+				}
+			}
+		}
+		synchronized (PLUGIN_RESOURCE_SOURCES) {
+			for (ResourceSource pluginSource : PLUGIN_RESOURCE_SOURCES.values()) {
+				URL url = pluginSource.getResource(name);
+				if (url != null) {
+					return url;
+				}
 			}
 		}
 
@@ -1046,9 +1140,9 @@ public class Tools {
 	 * resource names are only allowed to use '/' as separator instead of File.separator!
 	 *
 	 * @throws IOException
-	 *             if stream cannot be opened
+	 * 		if stream cannot be opened
 	 * @throws RepositoryException
-	 *             if resource cannot be found
+	 * 		if resource cannot be found
 	 */
 	public static InputStream getResourceInputStream(String name) throws IOException, RepositoryException {
 		URL resourceURL = Tools.getResource(name);
@@ -1058,8 +1152,38 @@ public class Tools {
 		return resourceURL.openStream();
 	}
 
+	/**
+	 * Tries to load the given text file from the resources. If it fails, returns an empty string and logs it. This is
+	 * necessary for extensions because {@link #getResource(String)} only looks in {@code
+	 * resources/com/rapidminer/resources}.
+	 *
+	 * @param resourcePath the path, e.g. "com/rapidminer/extension/resources/folder/script.js". The path is treated as
+	 *                     an absolute path. If the path contains a version number (which is quite common for HTML
+	 *                     resources), it & anything behind it will be stripped as it is not a valid filename. Example:
+	 *                     "/com/test/myFile.js?v=4.7.0" will become "/com/test/myFile.js".
+	 * @return the stream, never {@code null}. Must be closed by the caller!
+	 * @throws FileNotFoundException if the resource cannot be found
+	 * @throws IOException           if accessing the resource fails
+	 * @since 9.5.0
+	 */
+	public static InputStream openStreamFromResources(String resourcePath) throws IOException {
+		if (resourcePath.startsWith("/")) {
+			resourcePath = resourcePath.substring(1);
+		}
+		// in HTML files, it's quite common to reference a version. That is an invalid file name, so drop that.
+		if (resourcePath.contains("?v=")) {
+			resourcePath = resourcePath.substring(0, resourcePath.indexOf("?v="));
+		}
+		URL scriptResource = Plugin.getMajorClassLoader().getResource(resourcePath);
+		if (scriptResource == null) {
+			LogService.getRoot().log(Level.WARNING, "com.rapidminer.tools.Tools.resource_not_found", resourcePath);
+			throw new FileNotFoundException("Could not find resource '" + resourcePath + "'");
+		}
+		return scriptResource.openStream();
+	}
+
 	public static String readTextFile(InputStream in) throws IOException {
-		return readTextFile(new InputStreamReader(in, "UTF-8"));
+		return readFirstNLines(new InputStreamReader(in, StandardCharsets.UTF_8), Long.MAX_VALUE, false);
 	}
 
 	/**
@@ -1068,8 +1192,6 @@ public class Tools {
 	 * will be read with UTF-8 encoding.
 	 */
 	public static String readTextFile(File file) throws IOException {
-		FileInputStream inStream = new FileInputStream(file);
-
 		// due to a bug in pre-5.2.009, process files were stored in System encoding instead of
 		// UTF-8. So we have to check the process version, and if it's less than 5.2.009 we have
 		// to retrieve the file again with System encoding.
@@ -1078,33 +1200,32 @@ public class Tools {
 		// method will probably work), or it is not a valid process file (which will also be
 		// detected by the old method).
 		boolean useFallback = false;
-		try {
-			DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
-			DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
-			Document processXmlDocument = documentBuilder.parse(inStream);
-			XPathFactory xPathFactory = XPathFactory.newInstance();
-			XPath xPath = xPathFactory.newXPath();
-			String versionString = xPath.evaluate("/process/@version", processXmlDocument);
-			VersionNumber version = new VersionNumber(versionString);
-			if (version.isAtMost(5, 2, 8)) {
+		try (FileInputStream inStream = new FileInputStream(file)) {
+
+			try {
+				DocumentBuilder documentBuilder = XMLTools.createDocumentBuilder();
+				Document processXmlDocument = documentBuilder.parse(inStream);
+				XPathFactory xPathFactory = XPathFactory.newInstance();
+				XPath xPath = xPathFactory.newXPath();
+				String versionString = xPath.evaluate("/process/@version", processXmlDocument);
+				VersionNumber version = new VersionNumber(versionString);
+				if (version.isAtMost(5, 2, 8)) {
+					useFallback = true;
+				}
+			} catch (XPathExpressionException e) {
+				useFallback = true;
+			} catch (SAXException e) {
+				useFallback = true;
+			} catch (IOException e) {
+				useFallback = true;
+			} catch (NumberFormatException e) {
 				useFallback = true;
 			}
-		} catch (XPathExpressionException e) {
-			useFallback = true;
-		} catch (SAXException e) {
-			useFallback = true;
-		} catch (ParserConfigurationException e) {
-			useFallback = true;
-		} catch (IOException e) {
-			useFallback = true;
-		} catch (NumberFormatException e) {
-			useFallback = true;
 		}
 
 		InputStreamReader reader = null;
 
-		try {
-			inStream = new FileInputStream(file);
+		try (FileInputStream inStream = new FileInputStream(file)) {
 			if (useFallback) {
 				// default reader (as in old versions)
 				reader = new InputStreamReader(inStream);
@@ -1115,10 +1236,6 @@ public class Tools {
 
 			return readTextFile(reader);
 		} finally {
-			try {
-				inStream.close();
-			} catch (IOException e) {
-			}
 			if (reader != null) {
 				try {
 					reader.close();
@@ -1129,15 +1246,31 @@ public class Tools {
 	}
 
 	public static String readTextFile(Reader r) throws IOException {
+		return readFirstNLines(r, Long.MAX_VALUE, false);
+	}
+
+	/**
+	 * Reads the first n lines of a reader. If the reader contains less lines than specified, reads the entire text.
+	 *
+	 * @param r                     the reader which contains the text
+	 * @param numberOfLines         the maximum number of lines to read. Must be greater than {@code 0}.
+	 * @param appendCutoffIndicator if {@code true} and if the file contains more lines than the limit, adds {@code
+	 *                              (...)} as the last line
+	 * @return the string containing everything
+	 * @throws IOException if reading goes wrong
+	 * @since 9.7
+	 */
+	public static String readFirstNLines(Reader r, long numberOfLines, boolean appendCutoffIndicator) throws IOException {
 		StringBuilder contents = new StringBuilder();
-		BufferedReader reader = new BufferedReader(r);
-		String line = "";
-		try {
-			while ((line = reader.readLine()) != null) {
-				contents.append(line + Tools.getLineSeparator());
+		try (BufferedReader reader = new BufferedReader(r)) {
+			String line;
+			long counter = 0;
+			while (counter++ < numberOfLines && (line = reader.readLine()) != null) {
+				contents.append(line).append(Tools.getLineSeparator());
 			}
-		} finally {
-			reader.close();
+			if (appendCutoffIndicator && counter >= numberOfLines) {
+				contents.append("(...)");
+			}
 		}
 		return contents.toString();
 	}
@@ -1146,10 +1279,10 @@ public class Tools {
 	 * Reads content from the provided input stream.
 	 *
 	 * @param stream
-	 *            the stream to read content from
+	 * 		the stream to read content from
 	 * @return the content as String
 	 * @throws IOException
-	 *             in case something goes wrong
+	 * 		in case something goes wrong
 	 */
 	public static final String parseInputStreamToString(InputStream stream) throws IOException {
 		return parseInputStreamToString(stream, false);
@@ -1159,16 +1292,16 @@ public class Tools {
 	 * Reads content from the provided input stream.
 	 *
 	 * @param stream
-	 *            the stream to read content from
+	 * 		the stream to read content from
 	 * @param html
-	 *            return the string as html with line breaks between the lines
+	 * 		return the string as html with line breaks between the lines
 	 * @return the content as String
 	 * @throws IOException
-	 *             in case something goes wrong
+	 * 		in case something goes wrong
 	 */
 	public static final String parseInputStreamToString(InputStream stream, boolean html) throws IOException {
 		try (InputStreamReader inputStreamReader = new InputStreamReader(stream, StandardCharsets.UTF_8);
-				BufferedReader reader = new BufferedReader(inputStreamReader);) {
+			 BufferedReader reader = new BufferedReader(inputStreamReader);) {
 
 			StringBuilder contentBuilder = new StringBuilder();
 			if (html) {
@@ -1210,9 +1343,9 @@ public class Tools {
 		}
 	}
 
-	public static final String[] TRUE_STRINGS = { "true", "on", "yes", "y" };
+	public static final String[] TRUE_STRINGS = {"true", "on", "yes", "y"};
 
-	public static final String[] FALSE_STRINGS = { "false", "off", "no", "n" };
+	public static final String[] FALSE_STRINGS = {"false", "off", "no", "n"};
 
 	public static boolean booleanValue(String string, boolean deflt) {
 		if (string == null) {
@@ -1277,27 +1410,14 @@ public class Tools {
 	}
 
 	public static void findImplementationsInJar(ClassLoader loader, JarFile jar, Class<?> superClass,
-			List<String> implementations) {
-		Enumeration<JarEntry> e = jar.entries();
-		while (e.hasMoreElements()) {
-			JarEntry entry = e.nextElement();
-			String name = entry.getName();
-			int dotClass = name.lastIndexOf(".class");
-			if (dotClass < 0) {
-				continue;
-			}
-			name = name.substring(0, dotClass);
-			name = name.replaceAll("/", "\\.");
-			try {
-				Class<?> c = loader.loadClass(name);
-				if (superClass.isAssignableFrom(c)) {
-					if (!java.lang.reflect.Modifier.isAbstract(c.getModifiers())) {
-						implementations.add(name);
-					}
-				}
-			} catch (Throwable t) {
-			}
-		}
+												List<String> implementations) {
+		String classSuffix = ".class";
+		int suffixLength = classSuffix.length();
+		jar.stream().map(ZipEntry::getName).filter(n -> n.endsWith(classSuffix))
+				.map(n -> n.substring(0, n.length() - suffixLength).replace('/', '.'))
+				.map(suppress(loader::loadClass))
+				.filter(c -> c != null && superClass.isAssignableFrom(c) && !java.lang.reflect.Modifier.isAbstract(c.getModifiers()))
+				.map(Class::getName).forEach(implementations::add);
 	}
 
 	/** TODO: Looks like this can be replaced by {@link Plugin#getMajorClassLoader()} */
@@ -1441,17 +1561,16 @@ public class Tools {
 	 * commas inside of a quoted string should not be used as splitting point.
 	 *
 	 * @param line
-	 *            the original line
+	 * 		the original line
 	 * @param splittedTokens
-	 *            the tokens as they were originally splitted
+	 * 		the tokens as they were originally splitted
 	 * @param quoteString
-	 *            the string which should be used as quote indicator, e.g. &quot; or '
+	 * 		the string which should be used as quote indicator, e.g. &quot; or '
 	 * @return the array of strings where the given quoteString was regarded
 	 * @throws IOException
-	 *             if an open quote was not ended
-	 *
+	 * 		if an open quote was not ended
 	 * @deprecated Please use {@link #quotedSplit(String, Pattern, char, char)} or
-	 *             {@link #quotedSplit(String, Pattern)} instead
+	 * {@link #quotedSplit(String, Pattern)} instead
 	 */
 	@Deprecated
 	public static String[] mergeQuotedSplits(String line, String[] splittedTokens, String quoteString) throws IOException {
@@ -1472,7 +1591,7 @@ public class Tools {
 				start = i;
 			}
 			if (start >= 0) {
-				StringBuffer current = new StringBuffer();
+				StringBuilder current = new StringBuilder();
 				while (end < 0 && i < splittedTokens.length) {
 					if (splittedTokens[i].endsWith(quoteString)) {
 						end = i;
@@ -1530,10 +1649,10 @@ public class Tools {
 
 	/** Delivers the next token and skip empty lines. */
 	public static void getFirstToken(StreamTokenizer tokenizer) throws IOException {
-		// skip empty lines
+
 		while (tokenizer.nextToken() == StreamTokenizer.TT_EOL) {
+			// skip empty lines
 		}
-		;
 
 		if (tokenizer.ttype == '\'' || tokenizer.ttype == '"') {
 			tokenizer.ttype = StreamTokenizer.TT_WORD;
@@ -1566,10 +1685,10 @@ public class Tools {
 
 	/** Skips all tokens before next end of line (EOL). */
 	public static void waitForEOL(StreamTokenizer tokenizer) throws IOException {
-		// skip everything until EOL
+
 		while (tokenizer.nextToken() != StreamTokenizer.TT_EOL) {
+			// skip everything until EOL
 		}
-		;
 		tokenizer.pushBack();
 	}
 
@@ -1617,7 +1736,7 @@ public class Tools {
 				FileChannel in = null;
 				FileChannel out = null;
 				try (FileInputStream fis = new FileInputStream(srcPath);
-						FileOutputStream fos = new FileOutputStream(dstPath)) {
+					 FileOutputStream fos = new FileOutputStream(dstPath)) {
 					in = fis.getChannel();
 					out = fos.getChannel();
 					long size = in.size();
@@ -1637,7 +1756,7 @@ public class Tools {
 
 	/** Returns a whitespace with length indent. */
 	public static String indent(int indent) {
-		StringBuffer s = new StringBuffer();
+		StringBuilder s = new StringBuilder();
 		for (int i = 0; i < indent; i++) {
 			s.append(" ");
 		}
@@ -1661,6 +1780,49 @@ public class Tools {
 	}
 
 	/**
+	 * Writes the content stream to the fileLocation.
+	 * Any conflicting files and folders inside the rootFolder are deleted.
+	 *
+	 * @param content
+	 * 		the file content stream, which is <b>not</b> closed by this method
+	 * @param rootFolder
+	 * 		only files and folders in this path are deleted
+	 * @param fileLocation
+	 * 		the file location, must be inside the rootFolder
+	 * @return the number of written bytes
+	 * @throws IOException if anything goes wrong
+	 * @since 9.7.0
+	 */
+	public static long forceWriteFile(InputStream content, Path rootFolder, Path fileLocation) throws IOException {
+		rootFolder = rootFolder.normalize();
+		fileLocation = rootFolder.resolve(fileLocation).normalize();
+		if (!fileLocation.startsWith(rootFolder) || fileLocation.getNameCount() <= rootFolder.getNameCount()) {
+			throw new IOException("fileLocation \"" + fileLocation + "\" is not inside the rootFolder \"" + rootFolder + '"');
+		}
+		// remove file -> folder conflicts
+		if (Files.exists(rootFolder.resolve(fileLocation.getName(rootFolder.getNameCount())))) {
+			for (Path p = fileLocation.getParent(); p.getNameCount() > rootFolder.getNameCount(); p = p.getParent()) {
+				if (Files.exists(p) && !Files.isDirectory(p)) {
+					Files.delete(p);
+					// if it's a file the parent must be a folder
+					break;
+				}
+			}
+		}
+		// remove folder -> file conflicts
+		if (Files.isDirectory(fileLocation)) {
+			FileUtils.forceDelete(fileLocation.toFile());
+		}
+		// create parent folders
+		if (!Files.exists(fileLocation.getParent())) {
+			Files.createDirectories(fileLocation.toAbsolutePath().getParent());
+		}
+		try (OutputStream out = Files.newOutputStream(fileLocation, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			return IOUtils.copy(content, out, COPY_BUFFER_SIZE);
+		}
+	}
+
+	/**
 	 * Copies the contents read from the input stream to the output stream in the current thread.
 	 * Both streams will be closed, even in case of a failure.
 	 *
@@ -1668,7 +1830,7 @@ public class Tools {
 	 */
 	public static void copyStreamSynchronously(InputStream in, OutputStream out, boolean closeOutputStream)
 			throws IOException {
-		byte[] buffer = new byte[1024 * 20];
+		byte[] buffer = new byte[COPY_BUFFER_SIZE];
 		try {
 			int length;
 			while ((length = in.read(buffer)) != -1) {
@@ -1715,30 +1877,24 @@ public class Tools {
 	}
 
 	/**
-	 *
 	 * Returns the column name of the the n'th column like excel names it.
 	 *
 	 * @param index
-	 *            the index of the column
-	 *
+	 * 		the index of the column
 	 * @return
 	 */
 	public static String getExcelColumnName(int index) {
 		if (index < 0) {
 			return "error";
 		}
-		final Character[] alphabet = new Character[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
-				'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z' };
-
-		// index -= 1; // adjust so it matches 0-indexed array rather than
-		// 1-indexed column
-
-		int quotient = index / 26;
-		if (quotient > 0) {
-			return getExcelColumnName(quotient - 1) + alphabet[index % 26].toString();
-		} else {
-			return alphabet[index % 26].toString();
-		}
+		index++;
+		StringBuilder builder = new StringBuilder();
+		do {
+			index--; // adjust column number to offset thinking
+			builder.append((char) ('A' + (index % 26)));
+			index /= 26;
+		} while (index > 0);
+		return builder.reverse().toString();
 	}
 
 	/**
@@ -1751,7 +1907,7 @@ public class Tools {
 	 * "Some people never go crazy, What truly horrible lives they must live\"", "1968", "US"'
 	 */
 	public static String escapeQuoteCharsInQuotes(String line, Pattern separatorPattern, char quotingChar, char escapeChar,
-			boolean showWarning) {
+												  boolean showWarning) {
 		// first remember quoteChar positions which should be escaped:
 		char lastChar = '0';
 		boolean openedQuote = false;
@@ -1807,21 +1963,21 @@ public class Tools {
 
 		// then build new line:
 		if (!rememberQuotePosition.isEmpty()) {
-			String newLine = "";
+			StringBuilder newLine = new StringBuilder();
 			int pos = rememberQuotePosition.remove(0);
 			int i = 0;
 			for (Character c : line.toCharArray()) {
 				if (i == pos) {
-					newLine += Character.toString(escapeChar) + c;
+					newLine.append(escapeChar).append(c);
 					if (!rememberQuotePosition.isEmpty()) {
 						pos = rememberQuotePosition.remove(0);
 					}
 				} else {
-					newLine += c;
+					newLine.append(c);
 				}
 				i++;
 			}
-			line = newLine;
+			line = newLine.toString();
 		}
 		return line;
 	}
@@ -2005,7 +2161,7 @@ public class Tools {
 	 * most so many tokens will be returned. No more escaping is performed in the last token!
 	 */
 	public static List<String> unescape(String source, char escapeChar, char[] specialCharacters, char splitCharacter,
-			int splitLimit) {
+										int splitLimit) {
 		List<String> result = new LinkedList<>();
 		StringBuilder b = new StringBuilder();
 		// was the last character read an escape character?
@@ -2083,7 +2239,7 @@ public class Tools {
 	 * h%l\lo|mandy => h\%l\\lo%mandy<br>
 	 *
 	 * @param charToMask
-	 *            the character that should be masked. May not be '%' or '\\'
+	 * 		the character that should be masked. May not be '%' or '\\'
 	 */
 	public static String mask(char charToMask, String unmasked) {
 		if (charToMask == '%' || charToMask == '\\') {
@@ -2113,7 +2269,7 @@ public class Tools {
 	 * h\%l\\lo%mandy => h%l\lo|mandy<br>
 	 *
 	 * @param charToUnmask
-	 *            the char that should be unmasked
+	 * 		the char that should be unmasked
 	 */
 	public static String unmask(char charToUnmask, String masked) {
 		if (charToUnmask == '%' || charToUnmask == '\\') {
@@ -2153,7 +2309,7 @@ public class Tools {
 	 * The string <code>foo_bar</code> would return <code>true</code>.
 	 *
 	 * @param fileName
-	 *            if <code>null</code>, returns <code>false</code>
+	 * 		if <code>null</code>, returns <code>false</code>
 	 * @return
 	 */
 	public static boolean canFileBeStoredOnCurrentFilesystem(String fileName) {
@@ -2196,8 +2352,10 @@ public class Tools {
 	 * Copies the given {@link String} to the system {@link Clipboard}.
 	 *
 	 * @param s
+	 * 		the string to copy to the clipboard
 	 */
 	public static void copyStringToClipboard(String s) {
+
 		StringSelection stringSelection = new StringSelection(s);
 		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
 		clipboard.setContents(stringSelection, null);
@@ -2209,7 +2367,7 @@ public class Tools {
 	 * possible circle has been detected, this method will always return {@code true}.
 	 *
 	 * @param process
-	 *            the root process to check for circles
+	 * 		the root process to check for circles
 	 * @return {@code true} if a possible circle has been found; {@code false} otherwise
 	 * @since 6.5.0
 	 */
@@ -2231,7 +2389,7 @@ public class Tools {
 			if (op instanceof ProcessEmbeddingOperator) {
 				try {
 					RepositoryLocation loc = op
-							.getParameterAsRepositoryLocation(ProcessEmbeddingOperator.PARAMETER_PROCESS_FILE);
+							.getParameterAsRepositoryLocationData(ProcessEmbeddingOperator.PARAMETER_PROCESS_FILE, ProcessEntry.class);
 					com.rapidminer.Process embeddedProcess = loadEmbeddedProcess(loc);
 					if (embeddedProcess != null) {
 						String embeddedLoc = embeddedProcess.getProcessLocation().toString();
@@ -2257,12 +2415,12 @@ public class Tools {
 	 * Tries to load the given process. Will simply return {@code null} if something goes wrong.
 	 *
 	 * @param location
-	 *            the location from which to load
+	 * 		the location from which to load
 	 * @return the process or {@code null}
 	 */
 	private static com.rapidminer.Process loadEmbeddedProcess(RepositoryLocation location) {
 		try {
-			Entry entry = location.locateEntry();
+			ProcessEntry entry = location.locateData();
 			if (entry == null) {
 				return null;
 			} else {
@@ -2284,5 +2442,90 @@ public class Tools {
 		}
 
 		return pattern.toString();
+	}
+
+	/**
+	 * Check if an Operator is contained in a circle via BFS.
+	 *
+	 * @param operator
+	 * 		to be checked if there are connections to the inputports that are connected to operators outputports which are connected to the operators outputports.
+	 * @param maxhops
+	 * 		maximum amount of operators to look through when trying to check if it is a circle, will return false if maximum was reached. For 0 or less maxhops the default of 250 will be used.
+	 * @return if there is a circle
+	 * @since 9.2
+	 */
+	public static boolean isOperatorInCircle(Operator operator, int maxhops) {
+		LinkedList<Operator> nextConnectedOperators = new LinkedList<>();
+		Set<Operator> visitedOperators = new HashSet<>();
+		nextConnectedOperators.add(operator);
+		Operator nextOperator;
+		int maxAmountVisitedOperators = maxhops > 0 ? maxhops : 250;
+		while (!nextConnectedOperators.isEmpty()) {
+			nextOperator = nextConnectedOperators.pop();
+			for (OutputPort aPort : nextOperator.getOutputPorts().getAllPorts()) {
+				if (aPort.isConnected()) {
+					final Operator anotherOp = aPort.getDestination().getPorts().getOwner().getOperator();
+					if (operator == anotherOp) {
+						return true;
+					}
+					if (!visitedOperators.contains(anotherOp)) {
+						nextConnectedOperators.add(anotherOp);
+						visitedOperators.add(anotherOp);
+					}
+					if (--maxAmountVisitedOperators <= 0) {
+						nextConnectedOperators.clear();
+						visitedOperators.clear();
+						break;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Checks if the caller has the {@link PluginSandboxPolicy#RAPIDMINER_INTERNAL_PERMISSION}
+	 *
+	 * @throws UnsupportedOperationException
+	 * 		if the caller is not signed
+	 * @since 9.3
+	 */
+	public static void requireInternalPermission() {
+		try {
+			if (System.getSecurityManager() != null) {
+				AccessController.checkPermission(new RuntimePermission(PluginSandboxPolicy.RAPIDMINER_INTERNAL_PERMISSION));
+			}
+		} catch (AccessControlException e) {
+			throw new UnsupportedOperationException(I18N.getErrorMessage("access_control.no_internal_permission"), e);
+		}
+	}
+
+	/**
+	 * Convert the given char array to a byte array, using {@link StandardCharsets#UTF_8}.
+	 *
+	 * @param chars the char array, must not be {@code null}
+	 * @return the byte array, never {@code null}
+	 * @since 9.7
+	 */
+	public static byte[] convertCharArrayToByteArray(char[] chars) {
+		CharBuffer charBuffer = CharBuffer.wrap(chars);
+		ByteBuffer byteBuffer = StandardCharsets.UTF_8.encode(charBuffer);
+		byte[] bytes = Arrays.copyOfRange(byteBuffer.array(), byteBuffer.position(), byteBuffer.limit());
+		Arrays.fill(byteBuffer.array(), (byte) 0);
+		return bytes;
+	}
+
+	/**
+	 * Convert the given byte array to a char array, using {@link StandardCharsets#UTF_8}.
+	 *
+	 * @param bytes the byte array, must not be {@code null}
+	 * @return the char array, never {@code null}
+	 * @since 9.7
+	 */
+	public static char[] convertByteArrayToCharArray(byte[] bytes) {
+		CharBuffer charBuffer = StandardCharsets.UTF_8.decode(ByteBuffer.wrap(bytes));
+		char[] chars = Arrays.copyOfRange(charBuffer.array(), charBuffer.position(), charBuffer.limit());
+		Arrays.fill(charBuffer.array(), (char) 0);
+		return chars;
 	}
 }

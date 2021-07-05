@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,15 +19,16 @@
 package com.rapidminer.studio.io.data.internal.file.excel;
 
 import java.nio.file.Path;
-import java.text.DateFormat;
 
 import com.rapidminer.core.io.data.DataSet;
 import com.rapidminer.core.io.data.DataSetException;
 import com.rapidminer.core.io.data.DataSetMetaData;
 import com.rapidminer.core.io.data.source.DataSource;
 import com.rapidminer.core.io.data.source.DataSourceConfiguration;
+import com.rapidminer.core.io.data.source.DataSourceFeature;
 import com.rapidminer.core.io.data.source.FileDataSource;
 import com.rapidminer.operator.OperatorException;
+import com.rapidminer.operator.nio.ExcelDateTimeTypeGuesser;
 import com.rapidminer.operator.nio.model.DataResultSet;
 import com.rapidminer.operator.nio.model.DateFormatProvider;
 import com.rapidminer.operator.nio.model.ExcelResultSetConfiguration;
@@ -44,7 +45,7 @@ import com.rapidminer.studio.io.data.internal.ResultSetAdapterUtils;
  * @author Nils Woehler
  * @since 7.0.0
  */
-final class ExcelDataSource extends FileDataSource {
+public final class ExcelDataSource extends FileDataSource {
 
 	private DataSetMetaData metaData = null;
 
@@ -143,13 +144,7 @@ final class ExcelDataSource extends FileDataSource {
 				endRow = endRowByLength;
 			}
 		}
-		DateFormatProvider provider = new DateFormatProvider() {
-
-			@Override
-			public DateFormat geDateFormat() {
-				return getMetadata().getDateFormat();
-			}
-		};
+		DateFormatProvider provider = () -> getMetadata().getDateFormat();
 		return new ExcelResultSetAdapter(getResultSetConfiguration().makeDataResultSet(null, readMode, provider), startRow,
 				endRow);
 	}
@@ -227,13 +222,15 @@ final class ExcelDataSource extends FileDataSource {
 	 *             in case the guessing failed (e.g. because of file reading errors, wrong file
 	 *             path, etc.)
 	 */
-	void createMetaData() throws DataSetException {
+	public void createMetaData() throws DataSetException {
 		// create a new Excel ResultSet configuration which reads the whole selected sheet
 		// we cannot call getData() here as it might already skip the first lines
 		try (ExcelResultSetConfiguration configuration = new ExcelResultSetConfiguration()) {
 
 			configuration.setWorkbookFile(getLocation().toFile());
 			configuration.setSheet(getResultSetConfiguration().getSheet());
+			configuration.setSheetByName(getResultSetConfiguration().getSheetByName());
+			configuration.setSheetSelectionMode(getResultSetConfiguration().getSheetSelectionMode());
 			configuration.setColumnOffset(getResultSetConfiguration().getColumnOffset());
 			configuration.setColumnLast(getResultSetConfiguration().getColumnLast());
 			configuration.setEncoding(getResultSetConfiguration().getEncoding());
@@ -241,6 +238,7 @@ final class ExcelDataSource extends FileDataSource {
 			try (DataResultSet resultSet = configuration.makeDataResultSet(null)) {
 				this.metaData = ResultSetAdapterUtils.createMetaData(resultSet, null, getStartRowIndex(),
 						getHeaderRowIndex());
+				this.metaData.configure(ExcelDateTimeTypeGuesser.guessDateTimeColumnType(getData(), metaData));
 			} catch (OperatorException e) {
 				throw new DataSetException(e.getMessage(), e);
 			}
@@ -266,6 +264,11 @@ final class ExcelDataSource extends FileDataSource {
 			dataSet.close();
 			dataSet = null;
 		}
+	}
+
+	@Override
+	public boolean supportsFeature(DataSourceFeature feature){
+		return feature == DataSourceFeature.DATETIME_METADATA;
 	}
 
 }

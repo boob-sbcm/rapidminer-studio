@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -85,31 +85,31 @@ public class CSVFileReader {
 		String line = null;
 		eofReached = false;
 		boolean first = true;
-		LineReader reader = new LineReader(file);
 		LinkedList<String[]> valueLines = new LinkedList<String[]>();
-		dataEvaluator.start();
-		do {
-			line = reader.readLine();
-			if (line != null) {
-				String[] valueLine = parser.parse(line);
-				if (valueLine != null) {
-					if (first) {
-						first = false;
-						if (useFirstRowAsColumnNames) {
-							dataEvaluator.setColumnNames(valueLine);
-							continue;
+		try (LineReader reader = new LineReader(file)) {
+			dataEvaluator.start();
+			do {
+				line = reader.readLine();
+				if (line != null) {
+					String[] valueLine = parser.parse(line);
+					if (valueLine != null) {
+						if (first) {
+							first = false;
+							if (useFirstRowAsColumnNames) {
+								dataEvaluator.setColumnNames(valueLine);
+								continue;
+							}
 						}
+						dataEvaluator.update(valueLine);
+						valueLines.add(valueLine);
 					}
-					dataEvaluator.update(valueLine);
-					valueLines.add(valueLine);
+					rowCount++;
+				} else {
+					eofReached = true;
+					break;
 				}
-				rowCount++;
-			} else {
-				eofReached = true;
-				break;
-			}
-		} while (rowCount < maxLines);
-		reader.close();
+			} while (rowCount < maxLines);
+		}
 		dataEvaluator.finish(eofReached);
 		return valueLines;
 	}

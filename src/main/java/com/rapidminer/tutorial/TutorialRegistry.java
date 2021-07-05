@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -55,7 +55,7 @@ public enum TutorialRegistry {
 		register("Basics");
 		register("Data Handling");
 		register("Modeling, Scoring, and Validation");
-		register("RapidMiner Server");
+		register("RapidMiner AI Hub");
 		register("RapidMiner Radoop");
 
 		// Load tutorials from .RapidMiner folder to allow sharing

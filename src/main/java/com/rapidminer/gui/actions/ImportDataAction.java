@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,12 +19,12 @@
 package com.rapidminer.gui.actions;
 
 import java.awt.event.ActionEvent;
-
 import javax.swing.JDialog;
 
 import com.rapidminer.gui.RapidMinerGUI;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.studio.io.gui.internal.DataImportWizardBuilder;
+import com.rapidminer.studio.io.gui.internal.DataImportWizardUtils;
 
 
 /**
@@ -57,8 +57,9 @@ public class ImportDataAction extends ResourceAction {
 	}
 
 	@Override
-	public void actionPerformed(ActionEvent e) {
+	public void loggedActionPerformed(ActionEvent e) {
 		DataImportWizardBuilder builder = new DataImportWizardBuilder();
+		builder.setCallback(DataImportWizardUtils.showInResultsCallback());
 		JDialog wizard = builder.build(RapidMinerGUI.getMainFrame()).getDialog();
 		wizard.setVisible(true);
 	}

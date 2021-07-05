@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -33,10 +33,14 @@ import java.util.zip.ZipInputStream;
 import com.rapidminer.Process;
 import com.rapidminer.RapidMiner;
 import com.rapidminer.RepositoryProcessLocation;
+import com.rapidminer.io.process.ProcessOriginProcessXMLFilter;
+import com.rapidminer.io.process.ProcessOriginProcessXMLFilter.ProcessOriginState;
 import com.rapidminer.operator.FlagUserData;
+import com.rapidminer.repository.IOObjectEntry;
 import com.rapidminer.repository.MalformedRepositoryLocationException;
+import com.rapidminer.repository.ProcessEntry;
 import com.rapidminer.repository.RepositoryException;
-import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
 import com.rapidminer.repository.resource.ZipStreamResource;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.NonClosingZipInputStream;
@@ -197,20 +201,38 @@ public class Tutorial implements ZipStreamResource {
 				}
 			}
 		}
-		InputStream rawIn = getInputStream();
-		ZipInputStream zip = new ZipInputStream(rawIn);
-		ZipEntry entry;
-		while ((entry = zip.getNextEntry()) != null) {
-			if (entry.isDirectory() || !entry.getName().startsWith(folder)
-					|| entry.getName().replaceFirst("/", "").contains("/")) {
-				continue;
+		InputStream rawIn = null;
+		ZipInputStream zip = null;
+		try {
+			rawIn = getInputStream();
+			zip = new ZipInputStream(rawIn);
+			ZipEntry entry;
+			while ((entry = zip.getNextEntry()) != null) {
+				if (entry.isDirectory() || !entry.getName().startsWith(folder)
+						|| entry.getName().replaceFirst("/", "").contains("/")) {
+					continue;
+				}
+				String entryName = entry.getName();
+				if (localeStepsName.equals(entryName.replaceFirst(folder, ""))
+						|| !localeAvailable && STEPS_XML.equals(entryName.replaceFirst(folder, ""))) {
+					return zip;
+				}
 			}
-			String entryName = entry.getName();
-			if (localeStepsName.equals(entryName.replaceFirst(folder, ""))) {
-				return zip;
-			} else if (!localeAvailable && STEPS_XML.equals(entryName.replaceFirst(folder, ""))) {
-				return zip;
+		} catch (Exception e) {
+			if (zip != null) {
+				try {
+					zip.close();
+				} catch (IOException ioe) {
+					// ignore
+				}
+			} else if (rawIn != null) {
+				try {
+					rawIn.close();
+				} catch (IOException ioe) {
+					// ignore
+				}
 			}
+			throw e;
 		}
 		return null;
 	}
@@ -223,9 +245,10 @@ public class Tutorial implements ZipStreamResource {
 	 */
 	public Process makeProcess() throws IOException, XMLException, MalformedRepositoryLocationException {
 		String processLocation = TUTORIALS_PATH + getGroup().getName() + "/" + folder + processName;
-		RepositoryProcessLocation repoLocation = new RepositoryProcessLocation(new RepositoryLocation(processLocation));
-		Process newProcess = new Process(repoLocation.getRawXML());
+		RepositoryProcessLocation repoLocation = new RepositoryProcessLocation(new RepositoryLocationBuilder().withExpectedDataEntryType(ProcessEntry.class).buildFromAbsoluteLocation(processLocation));
+		Process newProcess = new Process(repoLocation.getRawXML(), Process.NO_ENCRYPTION);
 		newProcess.getRootOperator().setUserData(KEY_USER_DATA_FLAG, new FlagUserData());
+		ProcessOriginProcessXMLFilter.setProcessOriginState(newProcess, ProcessOriginState.GENERATED_TUTORIAL);
 		return newProcess;
 	}
 
@@ -252,9 +275,9 @@ public class Tutorial implements ZipStreamResource {
 						defaultProps.load(zip);
 					} else if (localeFileName.equals(entryName.replaceFirst(folder, ""))) {
 						localProps.load(zip);
-					} else if (entryName.endsWith(".rmp")) {
+					} else if (entryName.endsWith(ProcessEntry.RMP_SUFFIX)) {
 						processName = Paths.get(entryName).getFileName().toString().split("\\.")[0];
-					} else if (entryName.endsWith(".ioo")) {
+					} else if (entryName.endsWith(IOObjectEntry.IOO_SUFFIX)) {
 						demoData.add(Paths.get(entryName).getFileName().toString().split("\\.")[0]);
 					}
 				}

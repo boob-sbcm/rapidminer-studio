@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -36,8 +36,9 @@ import javax.swing.TransferHandler;
  * {@link TransferHandler} for exporting {@link DataTableColumn}s from Lists.
  * 
  * @author Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class DataTableColumnListTransferHandler extends AbstractPatchedTransferHandler {
 
 	private static final long serialVersionUID = 1L;

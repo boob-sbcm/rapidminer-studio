@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -47,6 +47,14 @@ public class PolynomialFunctionTest {
 		PolynomialFunction f = new PolynomialFunction(10, 2, 1, 3, 1);
 		// 10 * 5^2*ln(5) * 7^3*ln(7) * 10
 		assertEquals((long)268553.69946285250055529643, f.evaluate(5, 7));
+	}
+
+	@Test
+	public void testToStringForInvalidValue() {
+		PolynomialFunction f = PolynomialFunction.makeLinearFunction(-0.0d);
+		assertEquals("n/a", f.toString());
+		f = PolynomialFunction.makeLinearFunction(0.0d);
+		assertEquals("n/a", f.toString());
 	}
 
 }

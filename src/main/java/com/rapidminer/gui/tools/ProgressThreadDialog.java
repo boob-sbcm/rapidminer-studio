@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -22,17 +22,16 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-
+import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 
+import com.rapidminer.RapidMiner;
 import com.rapidminer.gui.ApplicationFrame;
 import com.rapidminer.gui.tools.dialogs.ButtonDialog;
 
@@ -51,18 +50,19 @@ public class ProgressThreadDialog extends ButtonDialog {
 
 	/** Create dialog in EDT */
 	static {
-		SwingTools.invokeLater(new Runnable() {
+		if (!RapidMiner.getExecutionMode().isHeadless()) {
+			SwingTools.invokeLater(new Runnable() {
 
-			@Override
-			public void run() {
-				INSTANCE = new ProgressThreadDialog();
-			}
-		});
+				@Override
+				public void run() {
+					INSTANCE = new ProgressThreadDialog();
+				}
+			});
+		}
 	}
 
 	/** mapping between ProgressThread and the UI panel for it */
-	private static Map<ProgressThread, ProgressThreadDisplay> MAPPING_PG_TO_UI = Collections
-	        .synchronizedMap(new HashMap<ProgressThread, ProgressThreadDisplay>());
+	private static final Map<ProgressThread, ProgressThreadDisplay> MAPPING_PG_TO_UI = new ConcurrentHashMap<>();
 
 	/** the panel displaying the running and waiting threads */
 	private JPanel threadPanel;
@@ -93,7 +93,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 
 			@Override
 			public void progressThreadFinished(ProgressThread pg) {
-				updatePanelInEDT();
+				updatePanelAndRemoveInEDT(pg);
 				updateUI();
 
 				MAPPING_PG_TO_UI.remove(pg);
@@ -101,7 +101,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 
 			@Override
 			public void progressThreadCancelled(ProgressThread pg) {
-				updatePanelInEDT();
+				updatePanelAndRemoveInEDT(pg);
 				updateUI();
 
 				MAPPING_PG_TO_UI.remove(pg);
@@ -111,26 +111,21 @@ public class ProgressThreadDialog extends ButtonDialog {
 			 * Updates the ProgressThread panel in the EDT.
 			 */
 			private void updatePanelInEDT() {
-				SwingUtilities.invokeLater(new Runnable() {
+				SwingUtilities.invokeLater(() -> updateThreadPanel(false));
+			}
 
-					@Override
-					public void run() {
-						updateThreadPanel(false);
-					}
-
+			private void updatePanelAndRemoveInEDT(ProgressThread pg) {
+				SwingUtilities.invokeLater(() -> {
+					updateThreadPanel(false);
+					// remove pg here again, otherwise it can happen that it is first removed by progressThreadFinished
+					// and then added again by updateThreadPanel, leading to a memory leak
+					MAPPING_PG_TO_UI.remove(pg);
 				});
 			}
 
 		});
 
-		SwingUtilities.invokeLater(new Runnable() {
-
-			@Override
-			public void run() {
-				initGUI();
-
-			}
-		});
+		SwingUtilities.invokeLater(ProgressThreadDialog.this::initGUI);
 	}
 
 	/**
@@ -209,14 +204,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 		if (ProgressThread.isEmpty()) {
 			// close dialog if not opened by user
 			if (!openedByUser) {
-				SwingUtilities.invokeLater(new Runnable() {
-
-					@Override
-					public void run() {
-						ProgressThreadDialog.this.dispose();
-					}
-
-				});
+				SwingTools.invokeLater(ProgressThreadDialog.this::dispose);
 			}
 
 			// hide status bar
@@ -227,14 +215,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 			if (!ProgressThread.isForegroundRunning()) {
 				// close dialog if not opened by user
 				if (!openedByUser) {
-					SwingUtilities.invokeLater(new Runnable() {
-
-						@Override
-						public void run() {
-							ProgressThreadDialog.this.dispose();
-						}
-
-					});
+					SwingTools.invokeLater(ProgressThreadDialog.this::dispose);
 				}
 			}
 
@@ -270,17 +251,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 		final ProgressThreadDisplay ui = MAPPING_PG_TO_UI.get(pg);
 
 		if (ui != null) {
-			if (SwingUtilities.isEventDispatchThread()) {
-				ui.setProgress(pg.getDisplay().getCompleted());
-			} else {
-				SwingUtilities.invokeLater(new Runnable() {
-
-					@Override
-					public void run() {
-						ui.setProgress(pg.getDisplay().getCompleted());
-					}
-				});
-			}
+			SwingTools.invokeLater(() -> ui.setProgress(pg.getDisplay().getCompleted()));
 		}
 		updateUI();
 	}
@@ -294,17 +265,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 		final ProgressThreadDisplay ui = MAPPING_PG_TO_UI.get(pg);
 
 		if (ui != null) {
-			if (SwingUtilities.isEventDispatchThread()) {
-				ui.setMessage(pg.getDisplay().getMessage());
-			} else {
-				SwingUtilities.invokeLater(new Runnable() {
-
-					@Override
-					public void run() {
-						ui.setMessage(pg.getDisplay().getMessage());
-					}
-				});
-			}
+			SwingTools.invokeLater(() -> ui.setMessage(pg.getDisplay().getMessage()));
 		}
 		updateUI();
 	}
@@ -321,6 +282,7 @@ public class ProgressThreadDialog extends ButtonDialog {
 		this.openedByUser = openedByUser;
 		if (visible) {
 			updateThreadPanel(true);
+			setIconImage(ApplicationFrame.getApplicationFrame().getIconImage());
 			setLocationRelativeTo(ApplicationFrame.getApplicationFrame());
 		}
 		super.setVisible(visible);
@@ -328,16 +290,11 @@ public class ProgressThreadDialog extends ButtonDialog {
 
 	@Override
 	public void setVisible(boolean b) {
-		openedByUser = false;
-		if (b) {
-			updateThreadPanel(true);
-			setLocationRelativeTo(ApplicationFrame.getApplicationFrame());
-		}
-		super.setVisible(b);
+		setVisible(false, b);
 	}
 
 	/**
-	 * Singleton access to the {@link ProgressThreadDialog}.
+	 * Singleton access to the {@link ProgressThreadDialog} or {@code null} if running in headless mode
 	 */
 	public static ProgressThreadDialog getInstance() {
 		return INSTANCE;

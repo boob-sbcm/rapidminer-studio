@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -44,8 +44,9 @@ import javax.swing.SwingUtilities;
  * 
  * @author Tobias Malbrecht
  * @author Sebastian Loh (22.04.2010)
- * 
+ * @deprecated use {@link com.rapidminer.studio.io.gui.internal.steps.configuration.ConfigureDataStep} instead
  */
+@Deprecated
 public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 
 	protected MetaDataDeclarationEditor editor = null;
@@ -70,7 +71,7 @@ public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			reader.stopReading();
 		}
 	});
@@ -79,7 +80,7 @@ public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			new ProgressThread("validate_value_types") {
 
 				@Override
@@ -125,7 +126,7 @@ public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			reader.stopReading();
 		}
 	});
@@ -134,7 +135,7 @@ public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			new ProgressThread("show_error_rows") {
 
 				@Override
@@ -177,7 +178,7 @@ public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			reader.stopReading();
 		}
 	});
@@ -187,7 +188,7 @@ public abstract class MetaDataDeclerationWizardStep extends WizardStep {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			new ProgressThread("guessing_value_types") {
 
 				@Override

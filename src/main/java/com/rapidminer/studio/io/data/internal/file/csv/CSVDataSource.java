@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,7 +23,6 @@ import java.text.NumberFormat;
 import java.util.Collections;
 import java.util.Map;
 
-import com.rapidminer.core.io.data.ColumnMetaData.ColumnType;
 import com.rapidminer.core.io.data.DataSetException;
 import com.rapidminer.core.io.data.DataSetMetaData;
 import com.rapidminer.core.io.data.source.DataSource;
@@ -46,8 +45,8 @@ import com.rapidminer.tools.StrictDecimalFormat;
  */
 public class CSVDataSource extends FileDataSource {
 
-	private DataSetMetaData metaData = new DefaultDataSetMetaData(Collections.<String> emptyList(),
-			Collections.<ColumnType> emptyList());
+	private DataSetMetaData metaData = new DefaultDataSetMetaData(Collections.emptyList(),
+			Collections.emptyList());
 	private CSVResultSetConfiguration configuration = new CSVResultSetConfiguration();
 	private CSVResultSetAdapter dataSet;
 	private DataSourceConfiguration dataSetConstructionConfiguration = null;
@@ -164,12 +163,16 @@ public class CSVDataSource extends FileDataSource {
 			configuration.setColumnSeparators(getResultSetConfiguration().getColumnSeparators());
 			configuration.setHasHeaderRow(getResultSetConfiguration().hasHeaderRow());
 			configuration.setHeaderRow(getResultSetConfiguration().getHeaderRow());
+			configuration.setTrimValuesForParsing(getResultSetConfiguration().trimValuesForParsing());
+			configuration.setStartingRow(getResultSetConfiguration().getStartingRow());
+			configuration.setTrimLines(getResultSetConfiguration().isTrimLines());
+			configuration.setSkipUTF8BOM(getResultSetConfiguration().isSkippingUTF8BOM());
 
 			int headerRowIndex = configuration.hasHeaderRow() ? configuration.getHeaderRow()
 					: ResultSetAdapter.NO_HEADER_ROW;
 			try (DataResultSet dataSet = configuration.makeDataResultSet(null)) {
 				this.metaData = ResultSetAdapterUtils.createMetaData(dataSet, getNumberFormat(), getDataStartRow(),
-						headerRowIndex);
+						headerRowIndex, false, configuration.trimValuesForParsing());
 			} catch (OperatorException e) {
 				throw new DataSetException(e.getMessage(), e);
 			}

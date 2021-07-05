@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -239,11 +239,6 @@ public final class AnnotationResizeHelper {
 		double newY = startFrame.getY() + yIncrease;
 		double newWidth = startFrame.getWidth() + widthIncrease;
 		double newHeight = startFrame.getHeight() + heightIncrease;
-		if (resizedAnno instanceof OperatorAnnotation) {
-			newHeight = Math.min(AnnotationDrawUtils.getContentHeight(
-					AnnotationDrawUtils.createStyledCommentString(resizedAnno.getComment(), resizedAnno.getStyle()),
-					(int) newWidth), OperatorAnnotation.MAX_HEIGHT);
-		}
 
 		// cannot relocate annotation to less than min x/y values
 		if (newX < WorkflowAnnotation.MIN_X) {

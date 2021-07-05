@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.tools.dialogs;
 
 import java.awt.BorderLayout;
@@ -44,7 +44,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
-
 import javax.imageio.ImageIO;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -55,10 +54,11 @@ import com.rapidminer.gui.ApplicationFrame;
 import com.rapidminer.gui.license.LicenseTools;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.VersionNumber;
-import com.rapidminer.gui.tools.VersionNumber.VersionNumberExcpetion;
+import com.rapidminer.gui.tools.VersionNumber.VersionNumberException;
 import com.rapidminer.gui.tools.components.LinkRemoteButton;
 import com.rapidminer.license.License;
 import com.rapidminer.license.StudioLicenseConstants;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.PlatformUtilities;
@@ -83,6 +83,10 @@ public class AboutBox extends JDialog {
 
 	private static final String DEFAULT_VENDOR = "RapidMiner";
 	private static final String DEFAULT_VENDOR_OLD = "Rapid-I";
+	private static final String JAVA_VERSION = "java.version";
+	private static final String COPYRIGHT = "copyright";
+	private static final String LICENSOR = "licensor";
+	private static final String LICENSE = "license";
 
 	public static Image backgroundImage = null;
 
@@ -109,22 +113,20 @@ public class AboutBox extends JDialog {
 		}
 	}
 
-	private final ContentPanel contentPanel;
-
 	private static class ContentPanel extends JPanel {
 
-		private static final String[] DISPLAYED_KEYS = new String[] { "copyright", "licensor", "license" };
+		private static final String[] DISPLAYED_KEYS = new String[] {JAVA_VERSION, COPYRIGHT, LICENSOR, LICENSE};
 
-		private static final Font FONT_SANS_SERIF_11 = new Font("SansSerif", Font.PLAIN, 11);
-		private static final Font FONT_SANS_SERIF_BOLD_11 = new Font("SansSerif", Font.BOLD, 11);
-		private static final Font FONT_SANS_SERIF_BOLD_26 = new Font("SansSerif", Font.BOLD, 26);
-		private static final Font FONT_OPEN_SANS_15 = new Font("Open Sans", Font.PLAIN, 15);
+		private static final Font FONT_SANS_SERIF_11 = FontTools.getFont(Font.SANS_SERIF, Font.PLAIN, 11);
+		private static final Font FONT_SANS_SERIF_BOLD_11 = FontTools.getFont(Font.SANS_SERIF, Font.BOLD, 11);
+		private static final Font FONT_SANS_SERIF_BOLD_26 = FontTools.getFont(Font.SANS_SERIF, Font.BOLD, 26);
+		private static final Font FONT_OPEN_SANS_15 = FontTools.getFont("Open Sans", Font.PLAIN, 15);
 
 		private static final List<Font> FONTS_PRODUCT_NAME = new ArrayList<>(15);
 
 		static {
 			for (int size = 60; size >= 8; size -= 4) {
-				FONTS_PRODUCT_NAME.add(new Font("Open Sans Light", Font.PLAIN, size));
+				FONTS_PRODUCT_NAME.add(FontTools.getFont("Open Sans Light", Font.PLAIN, size));
 			}
 		}
 
@@ -158,10 +160,10 @@ public class AboutBox extends JDialog {
 			for (String key : DISPLAYED_KEYS) {
 				if (properties.containsKey(key)) {
 					foundKeys++;
-					if (foundKeys > 2) {
-						height += ADDITIONAL_LINE_HEIGHT;
-					}
 				}
+			}
+			if (foundKeys >= 2) {
+				height += (foundKeys - 1) * ADDITIONAL_LINE_HEIGHT;
 			}
 			setPreferredSize(new Dimension(width, height));
 			setMinimumSize(new Dimension(width, height));
@@ -182,8 +184,8 @@ public class AboutBox extends JDialog {
 			g.fillRect(0, 0, getWidth(), getHeight());
 
 			// draw the background image without RapidMiner branding if the vendor is not RM
-			if (properties.get("licensor") != null && !String.valueOf(properties.get("licensor")).contains(DEFAULT_VENDOR)
-					&& !String.valueOf(properties.get("licensor")).contains(DEFAULT_VENDOR_OLD)
+			if (properties.get(LICENSOR) != null && !String.valueOf(properties.get(LICENSOR)).contains(DEFAULT_VENDOR)
+					&& !String.valueOf(properties.get(LICENSOR)).contains(DEFAULT_VENDOR_OLD)
 					&& backgroundImageWithoutLogo != null) {
 				g.drawImage(backgroundImageWithoutLogo, 0, 0, this);
 			} else if (backgroundImage != null) {
@@ -217,7 +219,7 @@ public class AboutBox extends JDialog {
 			if (properties.getProperty("version") != null) {
 				try {
 					versionNumber = new VersionNumber(properties.getProperty("version"));
-				} catch (VersionNumberExcpetion e) {
+				} catch (VersionNumberException e) {
 					// nothing to do
 				}
 			}
@@ -243,7 +245,7 @@ public class AboutBox extends JDialog {
 			String revision = properties.getProperty("revision");
 			if (revision != null) {
 				builder.append(" (rev: ");
-				builder.append(revision.substring(0, 6));
+				builder.append(revision, 0, 6);
 				String platform = properties.getProperty("platform");
 				if (platform != null) {
 					builder.append(", platform: ");
@@ -315,9 +317,7 @@ public class AboutBox extends JDialog {
 			if (text == null) {
 				return;
 			}
-			float xPos = x;
-			float yPos = y;
-			g.drawString(text, xPos, yPos);
+			g.drawString(text, (float) x, (float) y);
 		}
 	}
 
@@ -344,7 +344,7 @@ public class AboutBox extends JDialog {
 		if (name != null) {
 			setTitle("About " + name);
 		}
-		contentPanel = new ContentPanel(properties, productLogo);
+		ContentPanel contentPanel = new ContentPanel(properties, productLogo);
 		add(contentPanel, BorderLayout.CENTER);
 
 		JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -359,7 +359,7 @@ public class AboutBox extends JDialog {
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent e) {
+				public void loggedActionPerformed(ActionEvent e) {
 					RMUrlHandler.openInBrowser(url);
 				}
 			}));
@@ -370,7 +370,7 @@ public class AboutBox extends JDialog {
 			private static final long serialVersionUID = 1407089394491740308L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				dispose();
 			}
 
@@ -381,7 +381,7 @@ public class AboutBox extends JDialog {
 
 		pack();
 		if (owner != null) {
-		setLocationRelativeTo(owner);
+			setLocationRelativeTo(owner);
 		} else {
 			setLocationRelativeTo(ApplicationFrame.getApplicationFrame());
 		}
@@ -428,6 +428,9 @@ public class AboutBox extends JDialog {
 			properties.setProperty("registered_to", license.getLicenseUser().getName());
 		}
 		Plugin.initAboutTexts(properties);
+
+		properties.setProperty(JAVA_VERSION, I18N.getGUILabel("about.java_version.label", System.getProperty("java.vendor") + " " + System.getProperty("java.version")));
+
 		return properties;
 	}
 
@@ -436,8 +439,8 @@ public class AboutBox extends JDialog {
 		Properties properties = new Properties();
 		properties.setProperty("name", productName);
 		properties.setProperty("version", productVersion);
-		properties.setProperty("licensor", licensor);
-		properties.setProperty("license", "Website: " + url);
+		properties.setProperty(LICENSOR, licensor);
+		properties.setProperty(LICENSE, "Website: " + url);
 		properties.setProperty("more", text);
 		properties.setProperty("textNextToLogo", "" + renderTextNextToLogo);
 		properties.setProperty("url", url);

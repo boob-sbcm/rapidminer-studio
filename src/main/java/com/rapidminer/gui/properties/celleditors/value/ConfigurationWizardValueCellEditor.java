@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,17 +18,16 @@
 */
 package com.rapidminer.gui.properties.celleditors.value;
 
+import java.awt.Component;
+import java.awt.event.ActionEvent;
+import javax.swing.AbstractCellEditor;
+import javax.swing.JButton;
+import javax.swing.JTable;
+
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.wizards.ConfigurationWizardCreator;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.parameter.ParameterTypeConfiguration;
-
-import java.awt.Component;
-import java.awt.event.ActionEvent;
-
-import javax.swing.AbstractCellEditor;
-import javax.swing.JButton;
-import javax.swing.JTable;
 
 
 /**
@@ -52,7 +51,7 @@ public class ConfigurationWizardValueCellEditor extends AbstractCellEditor imple
 			private static final long serialVersionUID = 5340097986173787690L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				buttonPressed();
 			}
 		});
@@ -94,5 +93,10 @@ public class ConfigurationWizardValueCellEditor extends AbstractCellEditor imple
 	@Override
 	public boolean rendersLabel() {
 		return true;
+	}
+
+	@Override
+	public void activate() {
+		button.doClick();
 	}
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -48,6 +48,7 @@ import com.rapidminer.parameter.UndefinedParameterError;
 import com.rapidminer.parameter.conditions.EqualTypeCondition;
 import com.rapidminer.tools.Ontology;
 import com.rapidminer.tools.OperatorResourceConsumptionHandler;
+import com.rapidminer.tools.ProcessTools;
 import com.rapidminer.tools.expression.ExampleResolver;
 import com.rapidminer.tools.expression.Expression;
 import com.rapidminer.tools.expression.ExpressionException;
@@ -198,6 +199,12 @@ public class DeclareMissingValueOperator extends AbstractExampleSetProcessing {
 						Boolean resultBoolean;
 						try {
 							resultBoolean = result.evaluateBoolean();
+							// some expressions can return null (e.g. matches(att, val) when the attribute value is missing)
+							// in that case we treat the evaluation as a failure, thus we will NOT set the value to missing
+							// without this, an NPE would occur later when trying to evaluate if (resultBoolean)
+							if (resultBoolean == null) {
+								resultBoolean = Boolean.FALSE;
+							}
 						} catch (ExpressionException e) {
 							throw ExpressionParserUtils.convertToUserError(this, expression, e);
 						}
@@ -257,7 +264,7 @@ public class DeclareMissingValueOperator extends AbstractExampleSetProcessing {
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> parameters = super.getParameterTypes();
 
-		parameters.addAll(subsetSelector.getParameterTypes());
+		parameters.addAll(ProcessTools.setSubsetSelectorPrimaryParameter(subsetSelector.getParameterTypes(), true));
 
 		ParameterType type = new ParameterTypeCategory(PARAMETER_MODE, "Select the value type of the missing value",
 				VALUE_TYPES, 0);
@@ -280,6 +287,7 @@ public class DeclareMissingValueOperator extends AbstractExampleSetProcessing {
 				"This parameter defines the expression which if true equals the missing value", getInputPort(), true, false);
 		type.registerDependencyCondition(new EqualTypeCondition(this, PARAMETER_MODE, VALUE_TYPES, true, 2));
 		type.setExpert(false);
+		type.setPrimary(true);
 		parameters.add(type);
 
 		return parameters;

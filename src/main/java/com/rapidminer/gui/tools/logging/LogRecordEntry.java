@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -74,7 +74,11 @@ public class LogRecordEntry implements LogEntry {
 			b.append(" ");
 			b.append(record.getLevel().getLocalizedName());
 			b.append(": ");
-			b.append(formatMessage(record));
+			if (record.getMessage() != null) {
+				b.append(formatMessage(record));
+			} else {
+				b.append("[NULL] MESSAGE");
+			}
 			b.append("\n");
 			return b.toString();
 		}

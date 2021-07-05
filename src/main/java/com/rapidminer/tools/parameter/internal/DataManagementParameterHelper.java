@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -48,7 +48,7 @@ public final class DataManagementParameterHelper {
 	}
 
 	/**
-	 * the options for {@link #PARAMETER_NEW_DATA_MANAGEMENT} coming from {@link DataManagment}
+	 * the options for {@link #PARAMETER_NEW_DATA_MANAGEMENT} coming from {@link DataManagement}
 	 */
 	public static final String[] NEW_DATA_MANAGMENT_OPTIONS = new String[] { "auto", "memory-optimized", "speed-optimized" };
 

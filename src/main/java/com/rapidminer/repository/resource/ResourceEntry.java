@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,20 +18,20 @@
 */
 package com.rapidminer.repository.resource;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collection;
-
 import javax.swing.Action;
 
 import com.rapidminer.repository.Entry;
 import com.rapidminer.repository.Folder;
-import com.rapidminer.repository.MalformedRepositoryLocationException;
 import com.rapidminer.repository.RepositoryException;
-import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.tools.Tools;
 
 
 /**
  *
- * @author Simon Fischer
+ * @author Simon Fischer, Jan Czogalla
  *
  */
 public abstract class ResourceEntry implements Entry {
@@ -56,15 +56,6 @@ public abstract class ResourceEntry implements Entry {
 	@Override
 	public Folder getContainingFolder() {
 		return container;
-	}
-
-	@Override
-	public RepositoryLocation getLocation() {
-		try {
-			return new RepositoryLocation(getRepository().getLocation().toString() + getPath());
-		} catch (MalformedRepositoryLocationException e) {
-			throw new RuntimeException(e);
-		}
 	}
 
 	@Override
@@ -116,6 +107,25 @@ public abstract class ResourceEntry implements Entry {
 
 	protected void setRepository(ResourceRepository resourceRepository) {
 		this.repository = resourceRepository;
+	}
+
+	/**
+	 * Get the {@link InputStream} to the resource represented by this {@link Entry}
+	 * and the given suffix.
+	 *
+	 * @param suffix
+	 * 		the suffix to add to the resource path
+	 * @return the input stream to the resource or null
+	 * @throws RepositoryException
+	 * 		if any error occurs
+	 * @since 9.0
+	 */
+	protected InputStream getResourceStream(String suffix) throws RepositoryException {
+		try {
+			return Tools.getResourceInputStream(getResource() + suffix);
+		} catch (IOException e) {
+			throw new RepositoryException("Missing resource '" + getResource() + suffix + "': " + e, e);
+		}
 	}
 
 	@Override

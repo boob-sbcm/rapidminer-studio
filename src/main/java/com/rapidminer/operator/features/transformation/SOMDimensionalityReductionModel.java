@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -118,6 +118,8 @@ public class SOMDimensionalityReductionModel extends AbstractModel {
 				progress.setCompleted(progressCounter);
 			}
 		}
-		return builder.withRoles(newSpecialAttributes).build();
+		ExampleSet build = builder.withRoles(newSpecialAttributes).build();
+		build.setAllUserData(exampleSet.getAllUserData());
+		return build;
 	}
 }

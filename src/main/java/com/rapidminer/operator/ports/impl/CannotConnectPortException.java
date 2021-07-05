@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -60,22 +60,22 @@ public class CannotConnectPortException extends PortException {
 	private final OutputPort source;
 	private final InputPort dest;
 
-	public CannotConnectPortException(OutputPort source, InputPort dest, InputPort sourceDest, OutputPort destSource) {
+	public CannotConnectPortException(OutputPort source, InputPort dest) {
 		super("Cannot connect " + source.getSpec() + " to " + dest.getSpec());
 		this.source = source;
 		this.dest = dest;
+	}
+
+	public CannotConnectPortException(OutputPort source, InputPort dest, InputPort sourceDest, OutputPort destSource) {
+		this(source, dest);
 	}
 
 	public CannotConnectPortException(OutputPort source, InputPort dest, InputPort sourceDest) {
-		super("Cannot connect " + source.getSpec() + " to " + dest.getSpec());
-		this.source = source;
-		this.dest = dest;
+		this(source, dest);
 	}
 
 	public CannotConnectPortException(OutputPort source, InputPort dest, OutputPort destSource) {
-		super("Cannot connect " + source.getSpec() + " to " + dest.getSpec());
-		this.source = source;
-		this.dest = dest;
+		this(source, dest);
 	}
 
 	@Override
@@ -97,7 +97,7 @@ public class CannotConnectPortException extends PortException {
 			source.disconnect();
 		}
 		if (dest.isConnected()) {
-			dest.getSource().disconnect();
+			dest.disconnect();
 		}
 		source.connectTo(dest);
 		source.unlock();
@@ -112,7 +112,7 @@ public class CannotConnectPortException extends PortException {
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent e) {
+				public void loggedActionPerformed(ActionEvent e) {
 					final List<Port> toUnlock = new LinkedList<Port>();
 					try {
 

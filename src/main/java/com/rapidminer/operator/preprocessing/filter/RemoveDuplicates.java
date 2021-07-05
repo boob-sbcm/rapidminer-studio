@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -21,6 +21,7 @@ package com.rapidminer.operator.preprocessing.filter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -43,6 +44,7 @@ import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeBoolean;
 import com.rapidminer.parameter.UndefinedParameterError;
 import com.rapidminer.tools.OperatorResourceConsumptionHandler;
+import com.rapidminer.tools.ProcessTools;
 
 
 /**
@@ -108,9 +110,10 @@ public class RemoveDuplicates extends AbstractDataProcessing {
 		// in the bucket
 		HashMap<Integer, List<Integer>> buckets = new HashMap<>();
 		boolean missingsAsDuplicates = getParameterAsBoolean(PARAMETER_TREAT_MISSING_VALUES_AS_DUPLICATES);
+		Iterator<Example> iterator = exampleSet.iterator();
 		for (int i = 0; i < exampleSet.size(); i++) {
 			this.checkForStop();
-			Example example = exampleSet.getExample(i);
+			Example example = iterator.next();
 			int hash = 0;
 			for (Attribute attribute : compareAttributes) {
 				long bits = Double.doubleToLongBits(example.getValue(attribute));
@@ -171,7 +174,7 @@ public class RemoveDuplicates extends AbstractDataProcessing {
 	@Override
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
-		types.addAll(subsetSelector.getParameterTypes());
+		types.addAll(ProcessTools.setSubsetSelectorPrimaryParameter(subsetSelector.getParameterTypes(), true));
 
 		ParameterType type = new ParameterTypeBoolean(PARAMETER_TREAT_MISSING_VALUES_AS_DUPLICATES,
 				"If set to true, treats missing values as duplicates", false);

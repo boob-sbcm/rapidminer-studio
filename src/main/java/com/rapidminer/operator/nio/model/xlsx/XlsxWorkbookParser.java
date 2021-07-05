@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -30,7 +30,7 @@ import com.rapidminer.operator.nio.model.xlsx.XlsxWorkbookParser.XlsxWorkbook;
 /**
  * SAX parser for XLSX Workbook.
  *
- * @see ECMA-376, 4th Edition, 18.2 Workbook (pp. 1537 ff.)
+ * @see "ECMA-376, 4th Edition, 18.2 Workbook (pp. 1537 ff.)"
  *
  * @author Adrian Wilke, Nils Woehler
  * @since 6.3.0
@@ -40,7 +40,7 @@ public class XlsxWorkbookParser extends AbstractXlsxSAXHandler<XlsxWorkbook> {
 	/**
 	 * Container for XLSX workbook.
 	 *
-	 * @see ECMA-376, 4th Edition, 18.2 Workbook (pp. 1537 ff.)
+	 * @see "ECMA-376, 4th Edition, 18.2 Workbook (pp. 1537 ff.)"
 	 */
 	public static final class XlsxWorkbook {
 
@@ -61,7 +61,7 @@ public class XlsxWorkbookParser extends AbstractXlsxSAXHandler<XlsxWorkbook> {
 	/**
 	 * Container for XLSX workbook sheets.
 	 *
-	 * @see ECMA-376, 4th Edition, 18.2.19 sheet (pp. 1563 ff.)
+	 * @see "ECMA-376, 4th Edition, 18.2.19 sheet (pp. 1563 ff.)"
 	 */
 	public static final class XlsxWorkbookSheet {
 

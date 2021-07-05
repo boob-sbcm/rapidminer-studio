@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.new_plotter.configuration;
 
 import java.awt.Color;
@@ -35,7 +35,6 @@ import org.jfree.chart.plot.PlotOrientation;
 
 import com.rapidminer.gui.MainFrame;
 import com.rapidminer.gui.new_plotter.PlotConfigurationError;
-import com.rapidminer.gui.new_plotter.StaticDebug;
 import com.rapidminer.gui.new_plotter.configuration.DimensionConfig.PlotDimension;
 import com.rapidminer.gui.new_plotter.configuration.DomainConfigManager.GroupingState;
 import com.rapidminer.gui.new_plotter.configuration.LineFormat.LineStyle;
@@ -66,19 +65,22 @@ import com.rapidminer.gui.new_plotter.utility.CategoricalColorProvider;
 import com.rapidminer.gui.new_plotter.utility.ContinuousColorProvider;
 import com.rapidminer.gui.new_plotter.utility.DataStructureUtils;
 import com.rapidminer.gui.new_plotter.utility.ListUtility;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.ParameterService;
 
 
 /**
  * @author Marius Helf, Nils Woehler
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class PlotConfiguration implements DimensionConfigListener, RangeAxisConfigListener, Cloneable,
 		LinkAndBrushSelectionListener, LegendConfigurationListener, LinkAndBrushListener {
 
 	public static final Paint DEFAULT_SERIES_OUTLINE_PAINT = Color.BLACK;
 
-	public static final Font DEFAULT_AXES_FONT = new Font("Dialog", Font.PLAIN, 10);
+	public static final Font DEFAULT_AXES_FONT = FontTools.getFont(Font.DIALOG, Font.PLAIN, 10);
 
 	public static final Color DEFAULT_OUTLINE_COLOR = Color.BLACK;
 
@@ -90,7 +92,7 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	public static final int GUI_PLOTTER_ROWS_MAXIMUM_IF_RAPIDMINER_PROPERTY_NOT_READABLE = 5000;
 
 	private static final String DEFAULT_TITLE_TEXT = null;
-	private static final Font DEFAULT_TITLE_FONT = new Font("Arial", Font.PLAIN, 20);
+	private static final Font DEFAULT_TITLE_FONT = FontTools.getFont("Arial", Font.PLAIN, 20);
 
 	private static final Color DEFAULT_PLOT_BACKGROUND_COLOR = Color.white;
 	private static final Color DEFAULT_FRAME_BACKGROUND_COLOR = Color.white;
@@ -106,8 +108,8 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	private final DomainConfigManager domainConfigManager;
 
 	/**
-	 * Stores which DimensionConfig is used for a Dimension. All {@link PlotValueConfig} use the
-	 * same DimensionConfig. To be precisely, all {@link PlotValueConfig}s reference the same object
+	 * Stores which DimensionConfig is used for a Dimension. All {@link ValueSource} use the
+	 * same DimensionConfig. To be precisely, all {@link ValueSource}s reference the same object
 	 * and take the reference from this map.
 	 *
 	 * Exception: the domain Dimension is stored in the DomainConfigManager, to control proper
@@ -125,10 +127,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	private Font axesFont = DEFAULT_AXES_FONT;
 	private PlotOrientation orientation = DEFAULT_PLOT_ORIENTATION;
 
-	private static int CLASS_ID = 0;
-	private int unique_debug_id = -1;
-	private boolean cloned_debug = false;
-
 	/**
 	 * If this variable is true, events that happen inside this PlotConfiguration, e.g. changes of
 	 * RangeAxis, ValueSource etc., are process by the event queue. If this variable is false, no
@@ -137,7 +135,7 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	 * Best Practice to use it: boolean processing = isProcessingEvents(); setProcessEvents(false);
 	 * OTHER CODE setProcessEvents(processing);
 	 */
-	private Boolean processEvents = new Boolean(true);
+	private Boolean processEvents = Boolean.TRUE;
 
 	private List<PlotConfigurationChangeEvent> eventList = new LinkedList<PlotConfigurationChangeEvent>();
 	private Integer listenersInformedCounter = 0;
@@ -174,8 +172,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	 * @param domainColumn
 	 */
 	public PlotConfiguration(DataTableColumn domainColumn) {
-		++CLASS_ID;
-		unique_debug_id = CLASS_ID;
 		this.domainConfigManager = new DomainConfigManager(this, domainColumn);
 		this.linkAndBrushMaster = new LinkAndBrushMaster(this);
 		this.linkAndBrushMaster.addLinkAndBrushListener(this);
@@ -274,8 +270,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	 * Private ctor, used only by {@link #clone()} method
 	 */
 	private PlotConfiguration(DomainConfigManager domainConfigManager, LegendConfiguration legendConfiguration) {
-		++CLASS_ID;
-		unique_debug_id = CLASS_ID;
 		this.linkAndBrushMaster = new LinkAndBrushMaster(this);
 		this.linkAndBrushMaster.addLinkAndBrushListener(this);
 		this.legendConfiguration = legendConfiguration;
@@ -296,7 +290,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	}
 
 	public void addRangeAxisConfig(int index, RangeAxisConfig rangeAxis) {
-		debug("ADDING RANGEAXIS " + rangeAxis.getId());
 
 		rangeAxisConfigs.add(index, rangeAxis);
 		fireRangeAxisAdded(index, rangeAxis);
@@ -319,7 +312,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 
 	public int getNextId() {
 		++idCounter;
-		debug("Generated ID " + idCounter);
 		return idCounter;
 	}
 
@@ -337,7 +329,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	public void removeRangeAxisConfig(int index) {
 		RangeAxisConfig rangeAxis = rangeAxisConfigs.get(index);
 		rangeAxis.removeRangeAxisConfigListener(this);
-		debug(" REMOVING RANGEAXIS with index " + index + " and ID " + rangeAxis.getId());
 		rangeAxisConfigs.remove(index);
 		fireRangeAxisRemoved(index, rangeAxis);
 	}
@@ -516,8 +507,7 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	}
 
 	/**
-	 * @param domainAxisLineStroke
-	 *            the domainAxisLineStroke to set
+	 * @param axisLineWidth
 	 */
 	public void setAxisLineWidth(float axisLineWidth) {
 		if (axisLineWidth != this.axisLineWidth) {
@@ -529,8 +519,8 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	public void setAxisLineColor(Color axisLineColor) {
 		if (!axisLineColor.equals(this.axisLineColor)) {
 			this.axisLineColor = axisLineColor;
-			firePlotConfigurationChanged(new PlotConfigurationChangeEvent(this, PlotConfigurationChangeType.AXIS_LINE_COLOR,
-					axisLineColor));
+			firePlotConfigurationChanged(
+					new PlotConfigurationChangeEvent(this, PlotConfigurationChangeType.AXIS_LINE_COLOR, axisLineColor));
 		}
 	}
 
@@ -639,7 +629,7 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	}
 
 	/**
-	 * Returns a list of all {@link PlotValueConfig}s, no matter in which {@link RangeAxisConfig}
+	 * Returns a list of all {@link ValueSource}s, no matter in which {@link RangeAxisConfig}
 	 * they are located.
 	 */
 	public List<ValueSource> getAllValueSources() {
@@ -713,8 +703,8 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 
 			// set processing to false
 			setProcessEvents(false);
-			informValueSourcesAboutDimensionChange(new DimensionConfigChangeEvent(dimensionConfig, dimension,
-					DimensionConfigChangeType.RESET));
+			informValueSourcesAboutDimensionChange(
+					new DimensionConfigChangeEvent(dimensionConfig, dimension, DimensionConfigChangeType.RESET));
 			firePlotConfigurationChanged(new PlotConfigurationChangeEvent(this,
 					PlotConfigurationChangeType.DIMENSION_CONFIG_ADDED, dimension, dimensionConfig));
 			setProcessEvents(processEvents); // Restore old state
@@ -728,8 +718,8 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 
 			// set processing to false
 			setProcessEvents(false);
-			informValueSourcesAboutDimensionChange(new DimensionConfigChangeEvent(dimensionConfig, dimension,
-					DimensionConfigChangeType.RESET));
+			informValueSourcesAboutDimensionChange(
+					new DimensionConfigChangeEvent(dimensionConfig, dimension, DimensionConfigChangeType.RESET));
 			firePlotConfigurationChanged(new PlotConfigurationChangeEvent(this,
 					PlotConfigurationChangeType.DIMENSION_CONFIG_REMOVED, dimension, dimensionConfig));
 			setProcessEvents(processEvents); // Restore old state
@@ -783,7 +773,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 		informOfProcessingStatus(false);
 		currentEvent = null;
 		listenersInformedCounter = 0;
-		debug("PlotConfiguration: Reset current event..");
 		processQueueEvent();
 	}
 
@@ -797,7 +786,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	 */
 	public synchronized void setProcessEvents(Boolean process) {
 		this.processEvents = process;
-		debug(" SET PROCESS EVENTS TO: " + process);
 
 		if (processEvents) {
 			processQueueEvent();
@@ -835,12 +823,9 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 
 	private synchronized void processQueueEvent() {
 		boolean booleanValue = false;
-		debug("PROCESS EVENT QUEUE");
 		// eventInformCounter has to be synchronize to prevent reaching 0 value
 		// while informing listeners
 		booleanValue = processEvents.booleanValue();
-		debug("PROCESS EVENTS: " + booleanValue);
-		debug("CURRENT EVENT: " + currentEvent);
 		if (booleanValue && currentEvent == null) {
 			// if no current event is being processed
 
@@ -853,18 +838,10 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 				currentEvent = eventList.get(0);
 				currentEvent.setSource(this.clone());
 
-				debug("GOT NEW CURRENT EVENT: " + currentEvent);
-
-				StaticDebug.debugEvent(0, currentEvent);
-
 				eventList.remove(0);
 
 				informOfProcessingStatus(true);
 			} else {
-
-				debug("NO CURRENT EVENTS TO HANDLE");
-				StaticDebug.emptyDebugLine();
-				StaticDebug.emptyDebugLine();
 
 				// there are no recent events that have to be handled
 				return;
@@ -954,8 +931,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	 */
 	private synchronized void addEventToQueue(PlotConfigurationChangeEvent e) {
 
-		debug("ADD EVENT TO QUEUE");
-
 		// no changes to the event list may be done while adding new change
 		// events
 
@@ -963,17 +938,14 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 			PlotConfigurationChangeEvent plotConfigurationChangeEvent = eventList.get(0);
 			if (plotConfigurationChangeEvent.getType() == PlotConfigurationChangeType.META_CHANGE) {
 				plotConfigurationChangeEvent.addPlotConfigChangeEvent(this, e);
-				debug("ADD EVENT TO META EVENT");
 			} else {
 				List<PlotConfigurationChangeEvent> events = new LinkedList<PlotConfigurationChangeEvent>();
 				events.add(plotConfigurationChangeEvent);
 				events.add(e);
 				PlotConfigurationChangeEvent metaEvent = new PlotConfigurationChangeEvent(this, events);
 				eventList.set(0, metaEvent);
-				debug("CREATE NEW META EVENT");
 			}
 		} else {
-			debug("ADD EVENT TO LIST");
 			eventList.add(e);
 		}
 
@@ -982,21 +954,12 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 
 	private void firePlotConfigurationChanged(PlotConfigurationChangeEvent e) {
 		if (!initializing) {
-			debug("Firing a PlotConfigChangeEvent");
 			addEventToQueue(e);
 		}
 	}
 
 	public DomainConfigManager getDomainConfigManager() {
 		return domainConfigManager;
-	}
-
-	private void debug(String msg) {
-		if (cloned_debug) {
-			StaticDebug.debug("CLONED PlotConfig(" + unique_debug_id + "): " + msg);
-		} else {
-			StaticDebug.debug("PlotConfig(" + unique_debug_id + "): " + msg);
-		}
 	}
 
 	@Override
@@ -1098,8 +1061,8 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 			warnings.addAll(dimensionConfig.getWarnings());
 
 			if (!isDimensionUsed(dimensionConfig.getDimension())) {
-				warnings.add(new PlotConfigurationError("dimension_config_not_used", dimensionConfig.getDimension()
-						.getName()));
+				warnings.add(
+						new PlotConfigurationError("dimension_config_not_used", dimensionConfig.getDimension().getName()));
 			}
 
 		}
@@ -1151,9 +1114,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	@Override
 	public PlotConfiguration clone() {
 		PlotConfiguration clone = new PlotConfiguration(domainConfigManager.clone(), legendConfiguration.clone());
-		clone.cloned_debug = true;
-
-		debug(" Started CLONING");
 
 		clone.initializing = true;
 
@@ -1200,8 +1160,6 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 
 		clone.initializing = false;
 
-		debug(" CLONING done");
-
 		return clone;
 	}
 
@@ -1228,7 +1186,7 @@ public class PlotConfiguration implements DimensionConfigListener, RangeAxisConf
 	}
 
 	/**
-	 * @param colorScheme
+	 * @param colorSchemes
 	 *            the colorScheme to set
 	 */
 	public void setColorSchemes(Map<String, ColorScheme> colorSchemes, String activeColorSchemeName) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -27,8 +27,7 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.nio.charset.IllegalCharsetNameException;
-import java.nio.charset.UnsupportedCharsetException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -37,19 +36,21 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
-
+import java.util.stream.Collectors;
 import javax.swing.event.EventListenerList;
-import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
+import com.rapidminer.core.concurrency.ExecutionStoppedException;
 import com.rapidminer.core.license.LicenseViolationException;
 import com.rapidminer.core.license.ProductConstraintManager;
 import com.rapidminer.datatable.DataTable;
@@ -58,6 +59,7 @@ import com.rapidminer.example.table.AttributeFactory;
 import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.ProgressThreadStoppedException;
 import com.rapidminer.io.process.XMLImporter;
+import com.rapidminer.io.process.XMLTools;
 import com.rapidminer.license.violation.LicenseViolation;
 import com.rapidminer.operator.Annotations;
 import com.rapidminer.operator.DebugMode;
@@ -76,27 +78,33 @@ import com.rapidminer.operator.UnknownParameterInformation;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.execution.FlowData;
 import com.rapidminer.operator.execution.ProcessFlowFilter;
+import com.rapidminer.operator.nio.file.BinaryEntryFileObject;
 import com.rapidminer.operator.nio.file.RepositoryBlobObject;
 import com.rapidminer.operator.ports.InputPort;
 import com.rapidminer.operator.ports.OutputPort;
 import com.rapidminer.operator.ports.Port;
+import com.rapidminer.parameter.UndefinedParameterError;
 import com.rapidminer.report.ReportStream;
+import com.rapidminer.repository.BinaryEntry;
 import com.rapidminer.repository.BlobEntry;
-import com.rapidminer.repository.Entry;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.IOObjectEntry;
 import com.rapidminer.repository.MalformedRepositoryLocationException;
 import com.rapidminer.repository.RepositoryAccessor;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
+import com.rapidminer.repository.RepositoryLocationType;
 import com.rapidminer.repository.RepositoryManager;
 import com.rapidminer.studio.internal.ProcessFlowFilterRegistry;
+import com.rapidminer.studio.internal.Resources;
 import com.rapidminer.tools.AbstractObservable;
 import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.LoggingHandler;
-import com.rapidminer.tools.Observable;
 import com.rapidminer.tools.Observer;
 import com.rapidminer.tools.OperatorService;
 import com.rapidminer.tools.ParameterService;
+import com.rapidminer.tools.ProcessTools;
 import com.rapidminer.tools.ProgressListener;
 import com.rapidminer.tools.RandomGenerator;
 import com.rapidminer.tools.ResultService;
@@ -104,7 +112,9 @@ import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.WebServiceTools;
 import com.rapidminer.tools.WrapperLoggingHandler;
 import com.rapidminer.tools.XMLException;
+import com.rapidminer.tools.XMLParserException;
 import com.rapidminer.tools.container.Pair;
+import com.rapidminer.tools.encryption.EncryptionProvider;
 import com.rapidminer.tools.usagestats.ActionStatisticsCollector;
 
 
@@ -130,6 +140,14 @@ import com.rapidminer.tools.usagestats.ActionStatisticsCollector;
  * @author Ingo Mierswa
  */
 public class Process extends AbstractObservable<Process> implements Cloneable {
+
+	/**
+	 * Signals that no encryption context should be used when reading the process XML (aka it is not encrypted). See
+	 * {@link #Process(String, String)}.
+	 *
+	 * @since 9.7
+	 */
+	public static final String NO_ENCRYPTION = null;
 
 	public static final int PROCESS_STATE_UNKNOWN = -1;
 	public static final int PROCESS_STATE_STOPPED = 0;
@@ -174,7 +192,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	private final List<BreakpointListener> breakpointListeners = Collections.synchronizedList(new LinkedList<>());
 
 	/** The list of filters called between each operator */
-	private final List<ProcessFlowFilter> processFlowFilters = Collections.synchronizedList(new LinkedList<>());
+	private final CopyOnWriteArrayList<ProcessFlowFilter> processFlowFilters = new CopyOnWriteArrayList<>();
 
 	/** The listeners for logging (data tables). */
 	private final List<LoggingListener> loggingListeners = Collections.synchronizedList(new LinkedList<>());
@@ -208,7 +226,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 
 	/**
 	 * Stores IOObjects according to a specified name for a long-term scope like the session of
-	 * RapidMiner or a RapidMiner Server app session
+	 * RapidMiner or a RapidMiner AI Hub app session
 	 */
 	private IOObjectMap ioObjectCache = RapidMiner.getGlobalIOObjectCache();
 
@@ -221,11 +239,11 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	/** Indicates whether we are updating meta data. */
 	private transient DebugMode debugMode = DebugMode.DEBUG_OFF;
 
-	private transient final Logger logger = makeLogger();
+	private final transient Logger logger = makeLogger();
 
 	/** @deprecated Use {@link #getLogger()} */
 	@Deprecated
-	private transient final LoggingHandler logService = new WrapperLoggingHandler(logger);
+	private final transient LoggingHandler logService = new WrapperLoggingHandler(logger);
 
 	private ProcessContext context = new ProcessContext();
 
@@ -241,6 +259,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	 * <code>null</code> values for empty results.
 	 */
 	private boolean omitNullResults = true;
+
 
 	// -------------------
 	// Constructors
@@ -258,65 +277,148 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		initContext();
 	}
 
+	/**
+	 * @deprecated since 9.7, use {@link #Process(File, String, ProgressListener)} instead
+	 */
+	@Deprecated
 	public Process(final File file) throws IOException, XMLException {
-		this(file, null);
+		this(file, EncryptionProvider.DEFAULT_CONTEXT, null);
 	}
 
 	/**
-	 * Creates a new process from the given process file. This might have been created with the GUI
-	 * beforehand.
+	 * @deprecated since 9.7, use {@link #Process(File, String, ProgressListener)} instead
 	 */
+	@Deprecated
 	public Process(final File file, final ProgressListener progressListener) throws IOException, XMLException {
+		this(file, EncryptionProvider.DEFAULT_CONTEXT, progressListener);
+	}
+
+	/**
+	 * Creates a new process from the given process file. This might have been created with the GUI beforehand. Will use
+	 * the specified encryption context for decryption.
+	 *
+	 * @param file              the file where the process XML is contained in
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider})
+	 * @param progressListener  notified of load progress. Can be {@code null}
+	 * @since 9.7
+	 */
+	public Process(final File file, final String encryptionContext, final ProgressListener progressListener) throws IOException, XMLException {
 		this.processLocation = new FileProcessLocation(file);
 		initContext();
-		Reader in = null;
-		try {
-			in = new InputStreamReader(new FileInputStream(file), "UTF-8");
-			readProcess(in, progressListener);
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			if (in != null) {
-				in.close();
-			}
+		try (FileInputStream fis = new FileInputStream(file); Reader in = new InputStreamReader(fis, StandardCharsets.UTF_8)) {
+			readProcess(in, encryptionContext, progressListener);
 		}
 	}
 
 	/**
-	 * Creates a new process from the given XML copying state information not covered by the XML
-	 * from the parameter process.
+	 * Creates a new process from the given XML copying the process location from the parameter process.
+	 *
+	 * @deprecated since 9.7, use {@link #Process(String, String)} followed by {@link #setProcessLocation(ProcessLocation)}
 	 */
+	@Deprecated
 	public Process(final String xml, final Process process) throws IOException, XMLException {
-		this(xml);
 		this.processLocation = process.processLocation;
+		initContext();
+
+		String encryptionContext;
+		try {
+			encryptionContext = processLocation instanceof RepositoryProcessLocation ? ((RepositoryProcessLocation) processLocation).getRepositoryLocation().getRepository().getEncryptionContext() : EncryptionProvider.DEFAULT_CONTEXT;
+		} catch (RepositoryException e) {
+			encryptionContext = EncryptionProvider.DEFAULT_CONTEXT;
+		}
+		try (StringReader in = new StringReader(xml)) {
+			readProcess(in, encryptionContext);
+		}
 	}
 
-	/** Reads an process configuration from an XML String. */
+	/**
+	 * @deprecated since 9.7, use {@link #Process(String, String)}
+	 */
+	@Deprecated
 	public Process(final String xmlString) throws IOException, XMLException {
-		initContext();
-		StringReader in = new StringReader(xmlString);
-		readProcess(in);
-		in.close();
+		this(xmlString, NO_ENCRYPTION);
 	}
 
-	/** Reads an process configuration from the given reader. */
+	/**
+	 * Reads a process configuration from an XML String with the specified encryption context for decryption.
+	 *
+	 * @param xmlString         the XML with potentially encrypted values
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider}). If no encryption needs to be used
+	 *                          (e.g. because the process XML is not encrypted), you can use {@link #NO_ENCRYPTION} as
+	 *                          an argument here
+	 * @since 9.7
+	 */
+	public Process(final String xmlString, final String encryptionContext) throws IOException, XMLException {
+		initContext();
+		try (StringReader in = new StringReader(xmlString)) {
+			readProcess(in, encryptionContext);
+		}
+	}
+
+	/**
+	 * @deprecated since 9.7, use {@link #Process(Reader, String)}
+	 */
+	@Deprecated
 	public Process(final Reader in) throws IOException, XMLException {
-		initContext();
-		readProcess(in);
+		this(in, null);
 	}
 
-	/** Reads an process configuration from the given stream. */
+	/**
+	 * Reads a process configuration from the given reader with the specified encryption context for decryption.
+	 *
+	 * @param in                the reader containing the XML with potentially encrypted values
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider})
+	 * @since 9.7
+	 */
+	public Process(final Reader in, final String encryptionContext) throws IOException, XMLException {
+		initContext();
+		readProcess(in, encryptionContext);
+	}
+
+	/**
+	 * @deprecated since 9.7, use {@link #Process(InputStream, String)}
+	 */
+	@Deprecated
 	public Process(final InputStream in) throws IOException, XMLException {
-		initContext();
-		readProcess(new InputStreamReader(in, XMLImporter.PROCESS_FILE_CHARSET));
+		this(in, null);
 	}
 
-	/** Reads an process configuration from the given URL. */
+	/**
+	 * Reads a process configuration from the given stream with the specified encryption context for decryption.
+	 *
+	 * @param in                the input stream containing the XML with potentially encrypted values
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider})
+	 * @since 9.7
+	 */
+	public Process(final InputStream in, final String encryptionContext) throws IOException, XMLException {
+		this(new InputStreamReader(in, XMLImporter.PROCESS_FILE_CHARSET), encryptionContext);
+	}
+
+	/**
+	 * @deprecated since 9.7, use {@link #Process(URL, String)}
+	 */
+	@Deprecated
 	public Process(final URL url) throws IOException, XMLException {
+		this(url, null);
+	}
+
+	/**
+	 * Reads a process configuration from the given URL with the specified encryption context for decryption.
+	 *
+	 * @param url               the URL which contains the XML with potentially encrypted values
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider})
+	 * @since 9.7
+	 */
+	public Process(final URL url, final String encryptionContext) throws IOException, XMLException {
 		initContext();
-		Reader in = new InputStreamReader(WebServiceTools.openStreamFromURL(url), getEncoding(null));
-		readProcess(in);
-		in.close();
+		try (Reader in = new InputStreamReader(WebServiceTools.openStreamFromURL(url), StandardCharsets.UTF_8)) {
+			readProcess(in, encryptionContext);
+		}
 	}
 
 	protected Logger makeLogger() {
@@ -356,26 +458,10 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		return new Process(this);
 	}
 
-	/**
-	 * @deprecated Use {@link #setProcessState(int)} instead
-	 */
-	@Deprecated
-	public synchronized void setExperimentState(final int state) {
-		setProcessState(state);
-	}
-
 	private void setProcessState(final int state) {
 		int oldState = this.processState;
 		this.processState = state;
 		fireProcessStateChanged(oldState, state);
-	}
-
-	/**
-	 * @deprecated Use {@link #getProcessState()} instead
-	 */
-	@Deprecated
-	public synchronized int getExperimentState() {
-		return getProcessState();
 	}
 
 	public int getProcessState() {
@@ -428,6 +514,10 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	// Logging
 	// -------------------------
 
+	/**
+	 * @deprecated use {@link #getLogger()} instead
+	 */
+	@Deprecated
 	public LoggingHandler getLog() {
 		return this.logService;
 	}
@@ -454,7 +544,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	// IOObject Storage
 	// -------------------------
 
-	/** Returns the macro handler. */
+	/** Stores the object with the given name. */
 	public void store(final String name, final IOObject object) {
 		this.storageMap.put(name, object);
 	}
@@ -533,10 +623,8 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	/** Clears a single data table, i.e. removes all entries. */
 	public void clearDataTable(final String name) {
 		DataTable table = getDataTable(name);
-		if (table != null) {
-			if (table instanceof SimpleDataTable) {
-				((SimpleDataTable) table).clear();
-			}
+		if (table instanceof SimpleDataTable) {
+			((SimpleDataTable) table).clear();
 		}
 	}
 
@@ -650,11 +738,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 
 	/** Returns a Set view of all operator names (i.e. Strings). */
 	public Collection<String> getAllOperatorNames() {
-		Collection<String> allNames = new LinkedList<>();
-		for (Operator o : getAllOperators()) {
-			allNames.add(o.getName());
-		}
-		return allNames;
+		return getAllOperators().stream().map(Operator::getName).collect(Collectors.toList());
 	}
 
 	/** Sets the operator that is currently being executed. */
@@ -733,9 +817,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		if (filter == null) {
 			throw new IllegalArgumentException("filter must not be null!");
 		}
-		if (!processFlowFilters.contains(filter)) {
-			processFlowFilters.add(filter);
-		}
+		processFlowFilters.addIfAbsent(filter);
 	}
 
 	/**
@@ -771,9 +853,13 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		if (input == null) {
 			input = Collections.emptyList();
 		}
-		synchronized (processFlowFilters) {
-			for (ProcessFlowFilter filter : processFlowFilters) {
+		for (ProcessFlowFilter filter : processFlowFilters) {
+			try {
 				filter.preOperator(previousOperator, nextOperator, input);
+			} catch (OperatorException oe) {
+				throw oe;
+			} catch (Exception e) {
+				getLogger().log(Level.WARNING, "com.rapidminer.Process.process_flow_filter_failed", e);
 			}
 		}
 	}
@@ -799,9 +885,13 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		if (output == null) {
 			output = Collections.emptyList();
 		}
-		synchronized (processFlowFilters) {
-			for (ProcessFlowFilter filter : processFlowFilters) {
+		for (ProcessFlowFilter filter : processFlowFilters) {
+			try {
 				filter.postOperator(previousOperator, nextOperator, output);
+			} catch (OperatorException oe) {
+				throw oe;
+			} catch (Exception e) {
+				getLogger().log(Level.WARNING, "com.rapidminer.Process.process_flow_filter_failed", e);
 			}
 		}
 	}
@@ -818,11 +908,8 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		if (otherProcess == null) {
 			throw new IllegalArgumentException("otherProcess must not be null!");
 		}
-
-		synchronized (processFlowFilters) {
-			for (ProcessFlowFilter filter : processFlowFilters) {
-				otherProcess.addProcessFlowFilter(filter);
-			}
+		for (ProcessFlowFilter filter : processFlowFilters) {
+			otherProcess.addProcessFlowFilter(filter);
 		}
 	}
 
@@ -842,10 +929,12 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 
 	/** Fires the event that the process was paused. */
 	private void fireBreakpointEvent(final Operator operator, final IOContainer ioContainer, final int location) {
+		LinkedList<BreakpointListener> l;
 		synchronized (breakpointListeners) {
-			for (BreakpointListener l : breakpointListeners) {
-				l.breakpointReached(this, operator, ioContainer, location);
-			}
+			l = new LinkedList<>(breakpointListeners);
+		}
+		for (BreakpointListener listener : l) {
+			listener.breakpointReached(this, operator, ioContainer, location);
 		}
 	}
 
@@ -878,16 +967,6 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	 */
 	public void clearUnknownParameters() {
 		this.unknownParameterInformation.clear();
-	}
-
-	/**
-	 * Checks for correct number of inner operators, properties, and io.
-	 *
-	 * @deprecated Use {@link #checkProcess(IOContainer)} instead
-	 */
-	@Deprecated
-	public boolean checkExperiment(final IOContainer inputContainer) {
-		return checkProcess(inputContainer);
 	}
 
 	/** Checks for correct number of inner operators, properties, and io. */
@@ -1015,7 +1094,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 			OutputPort port = rootOperator.getSubprocess(0).getInnerSources().getPortByIndex(i);
 			RepositoryLocation loc;
 			try {
-				loc = resolveRepositoryLocation(location);
+				loc = resolveRepositoryLocation(location, RepositoryLocationType.DATA_ENTRY);
 			} catch (MalformedRepositoryLocationException | UserError e1) {
 				if (progressListener != null) {
 					progressListener.complete();
@@ -1023,7 +1102,7 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 				throw new PortUserError(port, 325, e1.getMessage());
 			}
 			try {
-				Entry entry = loc.locateEntry();
+				DataEntry entry = loc.locateData();
 				if (entry == null) {
 					if (progressListener != null) {
 						progressListener.complete();
@@ -1035,6 +1114,12 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 					// only deliver the data if the port is really connected
 					if (port.isConnected()) {
 						port.deliver(((IOObjectEntry) entry).retrieveData(null));
+					}
+				} else if (entry instanceof BinaryEntry) {
+					getLogger().info("Assigning " + loc + " to input port " + port.getSpec() + ".");
+					// only deliver the data if the port is really connected
+					if (port.isConnected()) {
+						port.deliver(new BinaryEntryFileObject(loc));
 					}
 				} else if (entry instanceof BlobEntry) {
 					getLogger().info("Assigning " + loc + " to input port " + port.getSpec() + ".");
@@ -1080,11 +1165,10 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 					InputPort port = rootOperator.getSubprocess(0).getInnerSinks().getPortByIndex(i);
 					RepositoryLocation location;
 					try {
-						location = rootOperator.getProcess().resolveRepositoryLocation(locationStr);
-					} catch (MalformedRepositoryLocationException e1) {
-						throw new PortUserError(port, 325, e1.getMessage());
-					} catch (UserError e1) {
-						throw new PortUserError(port, 325, e1.getMessage());
+						location = rootOperator.getProcess().resolveRepositoryLocation(locationStr, RepositoryLocationType.DATA_ENTRY);
+						location.setExpectedDataEntryType(IOObjectEntry.class);
+					} catch (MalformedRepositoryLocationException | UserError e) {
+						throw new PortUserError(port, 325, e.getMessage());
 					}
 					IOObject data = port.getDataOrNull(IOObject.class);
 					if (data == null) {
@@ -1195,52 +1279,202 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	 */
 	public final IOContainer run(final IOContainer input, int logVerbosity, final Map<String, String> macroMap,
 			final boolean storeOutput) throws OperatorException {
-		// make sure the process flow filter is registered
-		ProcessFlowFilter filter = ProcessFlowFilterRegistry.INSTANCE.getProcessFlowFilter();
-		if (filter != null && !processFlowFilters.contains(filter)) {
-			addProcessFlowFilter(filter);
-		}
-
-		// make sure licensing constraints are not violated
-		// iterate over all operators in the process
-		for (Operator op : rootOperator.getAllInnerOperators()) {
-			// we only care about enabled operators
-			if (op.isEnabled()) {
-
-				// Check for annotations that constrain access to the current operator
-				List<LicenseViolation> licenseViolations = ProductConstraintManager.INSTANCE.checkAnnotationViolations(op,
-						true);
-				if (!licenseViolations.isEmpty()) {
-					throw new LicenseViolationException(op, licenseViolations);
-				}
-
-				// as a side effect mark all enabled operators as dirty
-				// so it is clear which ones have already been executed
-				op.makeDirty();
+		ActionStatisticsCollector.getInstance().logExecutionStarted(this);
+		try {
+			// make sure the process flow filter is registered
+			ProcessFlowFilter filter = ProcessFlowFilterRegistry.INSTANCE.getProcessFlowFilter();
+			if (filter != null && !processFlowFilters.contains(filter)) {
+				addProcessFlowFilter(filter);
 			}
+
+			// make sure licensing constraints are not violated
+			// iterate over all operators in the process
+			for (Operator op : rootOperator.getAllInnerOperators()) {
+				// we only care about enabled operators
+				if (op.isEnabled()) {
+
+					// Check for annotations that constrain access to the current operator
+					List<LicenseViolation> licenseViolations = ProductConstraintManager.INSTANCE.checkAnnotationViolations(op,
+							true);
+					if (!licenseViolations.isEmpty()) {
+						throw new LicenseViolationException(op, licenseViolations);
+					}
+
+					// Check if the given operator is blacklisted
+					if (OperatorService.isOperatorBlacklisted(op.getOperatorDescription().getKey())) {
+						throw new UserError(op, "operator_blacklisted");
+					}
+
+					// as a side effect mark all enabled operators as dirty
+					// so it is clear which ones have already been executed
+					op.makeDirty();
+				}
+			}
+
+			int myVerbosity = rootOperator.getParameterAsInt(ProcessRootOperator.PARAMETER_LOGVERBOSITY);
+			if (logVerbosity == LogService.UNKNOWN_LEVEL) {
+				logVerbosity = LogService.OFF;
+			}
+			logVerbosity = Math.min(logVerbosity, myVerbosity);
+
+			prepareRun(logVerbosity);
+
+			// apply macros
+			applyContextMacros();
+			if (macroMap != null) {
+				for (Map.Entry<String, String> entry : macroMap.entrySet()) {
+					getMacroHandler().addMacro(entry.getKey(), entry.getValue());
+				}
+			}
+
+			Handler logHandler = generateLogHandler();
+			if (logHandler != null) {
+				getLogger().addHandler(logHandler);
+			}
+
+			long start = System.currentTimeMillis();
+
+			rootOperator.processStarts();
+
+			final int firstInput = input != null ? input.getIOObjects().length : 0;
+			if (checkForInitialData(firstInput)) {
+				// load data as specified in process context
+				ProgressThread pt = new ProgressThread("load_context_data", false) {
+
+					@Override
+					public void run() {
+						try {
+							loadInitialData(firstInput, getProgressListener());
+							setLastInitException(null);
+						} catch (ProgressThreadStoppedException ptse) {
+							// do nothing, it's checked below (pt.isCancelled)
+						} catch (Exception e) {
+							setLastInitException(e);
+						}
+					}
+				};
+				pt.setShowDialogTimerDelay(5000);
+				pt.setStartDialogShowTimer(true);
+
+				pt.startAndWait();
+				if (lastInitException != null) {
+					Throwable e = lastInitException;
+					lastInitException = null;
+					finishProcess(logHandler);
+					OperatorException oe;
+					if (e instanceof OperatorException) {
+						oe = (OperatorException) e;
+					} else {
+						oe = new OperatorException("context_problem_other", e, e.getMessage());
+					}
+					throw oe;
+				}
+				if (pt.isCancelled() || shouldStop()) {
+					finishProcess(logHandler);
+					throw new ProcessStoppedException();
+				}
+			}
+			return execute(input, storeOutput, logHandler, start);
+		} catch (Exception e) {
+			ActionStatisticsCollector.getInstance().logExecutionException(this, e);
+
+			throw e;
 		}
+	}
+
+	private IOContainer execute(IOContainer input, boolean storeOutput, Handler logHandler, long start) throws OperatorException {
 		// fetching process name for logging
-		String name = null;
+		final String name;
 		if (getProcessLocation() != null) {
 			name = getProcessLocation().toString();
+			getLogger().log(Level.INFO, () -> "Process " + name + " starts");
+		} else {
+			name = null;
+			getLogger().log(Level.INFO, "Process starts");
 		}
+		getLogger().log(Level.FINE, () -> "Process:" + Tools.getLineSeparator() + getRootOperator().createProcessTree(3));
 
-		int myVerbosity = rootOperator.getParameterAsInt(ProcessRootOperator.PARAMETER_LOGVERBOSITY);
-		if (logVerbosity == LogService.UNKNOWN_LEVEL) {
-			logVerbosity = LogService.OFF;
-		}
-		logVerbosity = Math.min(logVerbosity, myVerbosity);
+		try {
+			ActionStatisticsCollector.getInstance().logExecution(this);
 
-		prepareRun(logVerbosity);
-
-		// apply macros
-		applyContextMacros();
-		if (macroMap != null) {
-			for (Map.Entry<String, String> entry : macroMap.entrySet()) {
-				getMacroHandler().addMacro(entry.getKey(), entry.getValue());
+			IOContainer result;
+			// RA-2105: prevent pooled process execution for web apps
+			if (rootOperator.getUserData("WEBAPP_EXECUTION") != null) {
+				result = executeRoot(input, storeOutput);
+			} else {
+				result = executeRootInPool(input, storeOutput);
 			}
-		}
+			long end = System.currentTimeMillis();
 
+			getLogger().log(Level.FINE, () -> "Process:" + Tools.getLineSeparator() + getRootOperator().createProcessTree(3));
+			if (name != null) {
+				getLogger().log(Level.INFO, () -> "Process " + name + " finished successfully after " + Tools.formatDuration(end - start));
+			} else {
+				getLogger().log(Level.INFO, () -> "Process finished successfully after " + Tools.formatDuration(end - start));
+			}
+
+			ActionStatisticsCollector.getInstance().logExecutionSuccess(this);
+
+			return result;
+		} catch (ProcessStoppedException e) {
+			Operator op = getOperator(e.getOperatorName());
+			ActionStatisticsCollector.getInstance().log(op, ActionStatisticsCollector.OPERATOR_EVENT_STOPPED);
+			throw e;
+		} catch (UserError e) {
+			ActionStatisticsCollector.getInstance().log(getCurrentOperator(), ActionStatisticsCollector.OPERATOR_EVENT_FAILURE);
+			ActionStatisticsCollector.getInstance().log(e.getOperator(), ActionStatisticsCollector.OPERATOR_EVENT_USER_ERROR);
+			throw e;
+		} catch (OperatorException e) {
+			ActionStatisticsCollector.getInstance().log(getCurrentOperator(), ActionStatisticsCollector.OPERATOR_EVENT_FAILURE);
+			ActionStatisticsCollector.getInstance().log(getCurrentOperator(), ActionStatisticsCollector.OPERATOR_EVENT_OPERATOR_EXCEPTION);
+			throw e;
+		} finally {
+			finishProcess(logHandler);
+		}
+	}
+
+	private IOContainer executeRootInPool(IOContainer input, boolean storeOutput) throws OperatorException {
+		IOContainer result;
+		try {
+			RandomGenerator.stash(this);
+			List<IOContainer> containers = Resources.getConcurrencyContext(rootOperator)
+					.call(Collections.singletonList(() -> {
+						RandomGenerator.restore(this);
+						return executeRoot(input, storeOutput);
+					}));
+			result = containers.get(0);
+		} catch (ExecutionException e) {
+			if (e.getCause() instanceof Error) {
+				throw (Error) e.getCause();
+			} else if (e.getCause() instanceof RuntimeException) {
+				throw (RuntimeException) e.getCause();
+			}
+			//all other checked exceptions must come from called method executeRoot
+			throw (OperatorException) e.getCause();
+		} catch (ExecutionStoppedException e) {
+			throw new ProcessStoppedException();
+		}
+		return result;
+	}
+
+	private IOContainer executeRoot(IOContainer input, boolean storeOutput) throws OperatorException {
+		if (input != null) {
+			rootOperator.deliverInput(Arrays.asList(input.getIOObjects()));
+		}
+		rootOperator.execute();
+		rootOperator.checkForStop();
+		if (storeOutput) {
+			saveResults();
+		}
+		return rootOperator.getResults(isOmittingNullResults());
+	}
+
+	/**
+	 * Sets up the {@link Handler}} for the executed process.
+	 *
+	 * @throws UndefinedParameterError
+	 */
+	private Handler generateLogHandler() throws UndefinedParameterError {
 		String logFilename = rootOperator.getParameter(ProcessRootOperator.PARAMETER_LOGFILE);
 		Handler logHandler = null;
 		if (logFilename != null) {
@@ -1248,105 +1482,12 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 				logHandler = new FileHandler(logFilename);
 				logHandler.setFormatter(new SimpleFormatter());
 				logHandler.setLevel(Level.ALL);
-				getLogger().config("Logging process to file " + logFilename);
+				getLogger().log(Level.CONFIG, () -> "Logging process to file " + logFilename);
 			} catch (Exception e) {
 				getLogger().warning("Cannot create log file '" + logFilename + "': " + e);
 			}
 		}
-		if (logHandler != null) {
-			getLogger().addHandler(logHandler);
-		}
-
-		long start = System.currentTimeMillis();
-
-		rootOperator.processStarts();
-
-		final int firstInput = input != null ? input.getIOObjects().length : 0;
-		if (checkForInitialData(firstInput)) {
-			// load data as specified in process context
-			ProgressThread pt = new ProgressThread("load_context_data", false) {
-
-				@Override
-				public void run() {
-					try {
-						loadInitialData(firstInput, getProgressListener());
-						setLastInitException(null);
-					} catch (ProgressThreadStoppedException ptse) {
-						// do nothing, it's checked below (pt.isCancelled)
-					} catch (Exception e) {
-						setLastInitException(e);
-					}
-				}
-			};
-			pt.setShowDialogTimerDelay(5000);
-			pt.setStartDialogShowTimer(true);
-
-			pt.startAndWait();
-			if (lastInitException != null) {
-				Throwable e = lastInitException;
-				lastInitException = null;
-				finishProcess(logHandler);
-				OperatorException oe;
-				if (e instanceof OperatorException) {
-					oe = (OperatorException) e;
-				} else {
-					oe = new OperatorException("context_problem_other", e, e.getMessage());
-				}
-				throw oe;
-			}
-			if (pt.isCancelled() || shouldStop()) {
-				finishProcess(logHandler);
-				throw new ProcessStoppedException();
-			}
-		}
-
-		if (name != null) {
-			getLogger().info("Process " + name + " starts");
-		} else {
-			getLogger().info("Process starts");
-		}
-		getLogger().fine("Process:" + Tools.getLineSeparator() + getRootOperator().createProcessTree(3));
-
-		try {
-			ActionStatisticsCollector.getInstance().logExecution(this);
-			if (input != null) {
-				rootOperator.deliverInput(Arrays.asList(input.getIOObjects()));
-			}
-			rootOperator.execute();
-			rootOperator.checkForStop();
-			if (storeOutput) {
-				saveResults();
-			}
-			IOContainer result = rootOperator.getResults(isOmittingNullResults());
-			long end = System.currentTimeMillis();
-
-			getLogger().fine("Process:" + Tools.getLineSeparator() + getRootOperator().createProcessTree(3));
-			if (name != null) {
-				getLogger().info("Process " + name + " finished successfully after " + Tools.formatDuration(end - start));
-			} else {
-				getLogger().info("Process finished successfully after " + Tools.formatDuration(end - start));
-			}
-
-			return result;
-		} catch (OperatorException e) {
-			if (e instanceof ProcessStoppedException) {
-				Operator op = getOperator(((ProcessStoppedException) e).getOperatorName());
-				ActionStatisticsCollector.getInstance().log(op, ActionStatisticsCollector.OPERATOR_EVENT_STOPPED);
-			} else {
-				ActionStatisticsCollector.getInstance().log(getCurrentOperator(),
-						ActionStatisticsCollector.OPERATOR_EVENT_FAILURE);
-				if (e instanceof UserError) {
-					ActionStatisticsCollector.getInstance().log(((UserError) e).getOperator(),
-							ActionStatisticsCollector.OPERATOR_EVENT_USER_ERROR);
-				} else {
-					ActionStatisticsCollector.getInstance().log(getCurrentOperator(),
-							ActionStatisticsCollector.OPERATOR_EVENT_OPERATOR_EXCEPTION);
-				}
-			}
-			throw e;
-		} finally {
-			finishProcess(logHandler);
-		}
+		return logHandler;
 	}
 
 	/** The last thrown exception during context loading */
@@ -1399,6 +1540,10 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	// Process IO
 	// ----------------------
 
+	/**
+	 * @deprecated since 9.6.0. Use the {@link com.rapidminer.tools.io.Encoding Encoding} class instead if you cannot use UTF-8 for some reason (there should be zero reasons!)
+	 */
+	@Deprecated
 	public static Charset getEncoding(String encoding) {
 		if (encoding == null) {
 			encoding = ParameterService.getParameterValue(RapidMiner.PROPERTY_RAPIDMINER_GENERAL_DEFAULT_ENCODING);
@@ -1413,10 +1558,6 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		} else {
 			try {
 				result = Charset.forName(encoding);
-			} catch (IllegalCharsetNameException e) {
-				result = Charset.defaultCharset();
-			} catch (UnsupportedCharsetException e) {
-				result = Charset.defaultCharset();
 			} catch (IllegalArgumentException e) {
 				result = Charset.defaultCharset();
 			}
@@ -1464,22 +1605,62 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 			String homeName = System.getProperty("user.home");
 			if (homeName != null) {
 				File file = new File(new File(homeName), name);
-				getLogger().warning("Process not attached to a file. Resolving against user directory: '" + file + "'.");
+				getLogger().info("Process not attached to a file. Resolving against user directory: '" + file + "'.");
 				return file;
 			} else {
-				getLogger().warning("Process not attached to a file. Trying abolute filename '" + name + "'.");
+				getLogger().info("Process not attached to a file. Trying absolute filename '" + name + "'.");
 				return new File(name);
 			}
 		}
 
 	}
 
-	/** Reads the process setup from the given input stream. */
+	/**
+	 * @deprecated since 9.7, use {@link #readProcess(Reader, String)} instead
+	 */
+	@Deprecated
 	public void readProcess(final Reader in) throws XMLException, IOException {
-		readProcess(in, null);
+		readProcess(in, EncryptionProvider.DEFAULT_CONTEXT);
 	}
 
+	/**
+	 * @deprecated since 9.7, use {@link #readProcess(Reader, String, ProgressListener)} instead
+	 */
+	@Deprecated
 	public void readProcess(final Reader in, final ProgressListener progressListener) throws XMLException, IOException {
+		readProcess(in, EncryptionProvider.DEFAULT_CONTEXT, progressListener);
+	}
+
+	/**
+	 * Reads the process from the given {@link Reader}. Will use the specified encryption context (see {@link
+	 * EncryptionProvider}) to decrypt possible secret values.
+	 *
+	 * @param in                the reader, must not be {@code null}
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider}). If {@code null}, will treat secret
+	 *                          values are unencrypted and thus not attempt to decrypt anything
+	 * @throws XMLException if the XML cannot be parsed
+	 * @throws IOException  if something goes wrong technically
+	 * @since 9.7
+	 */
+	public void readProcess(Reader in, String encryptionContext) throws XMLException, IOException {
+		readProcess(in, encryptionContext, null);
+	}
+
+	/**
+	 * Reads the process from the given {@link Reader}. Will use the specified encryption context (see {@link
+	 * EncryptionProvider}) to decrypt possible secret values.
+	 *
+	 * @param in                the reader, must not be {@code null}
+	 * @param encryptionContext the encryption context that will be used to potentially decrypt values (see {@link
+	 *                          com.rapidminer.tools.encryption.EncryptionProvider}). If {@code null}, will treat secret
+	 *                          values are unencrypted and thus not attempt to decrypt anything
+	 * @param progressListener  the progress listener to be notified of load progress. Can be {@code null}
+	 * @throws XMLException if the XML cannot be parsed
+	 * @throws IOException  if something goes wrong technically
+	 * @since 9.7
+	 */
+	public void readProcess(Reader in, String encryptionContext, ProgressListener progressListener) throws XMLException, IOException {
 		Map<String, Operator> nameMapBackup = operatorNameMap;
 		operatorNameMap = new HashMap<>(); // no invocation of clear (see below)
 
@@ -1488,17 +1669,17 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 			progressListener.setCompleted(0);
 		}
 		try {
-			Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new InputSource(in));
+			Document document = XMLTools.createDocumentBuilder().parse(new InputSource(in));
 			if (progressListener != null) {
 				progressListener.setCompleted(20);
 			}
 			unknownParameterInformation.clear();
-			XMLImporter xmlImporter = new XMLImporter(progressListener);
+			XMLImporter xmlImporter = new XMLImporter(progressListener, encryptionContext);
 			xmlImporter.parse(document, this, unknownParameterInformation);
 
 			nameMapBackup = operatorNameMap;
 			rootOperator.clear(Port.CLEAR_ALL);
-		} catch (javax.xml.parsers.ParserConfigurationException e) {
+		} catch (XMLParserException e) {
 			throw new XMLException(e.toString(), e);
 		} catch (SAXException e) {
 			throw new XMLException("Cannot parse document: " + e.getMessage(), e);
@@ -1517,23 +1698,9 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 	 * as operator name.
 	 */
 	public String registerName(final String name, final Operator operator) {
-		if (operatorNameMap.get(name) != null) {
-			String baseName = name;
-			int index = baseName.indexOf(" (");
-			if (index >= 0) {
-				baseName = baseName.substring(0, index);
-			}
-			int i = 2;
-			while (operatorNameMap.get(baseName + " (" + i + ")") != null) {
-				i++;
-			}
-			String newName = baseName + " (" + i + ")";
-			operatorNameMap.put(newName, operator);
-			return newName;
-		} else {
-			operatorNameMap.put(name, operator);
-			return name;
-		}
+		String newName = ProcessTools.getNewName(operatorNameMap.keySet(), name);
+		operatorNameMap.put(newName, operator);
+		return newName;
 	}
 
 	/** This method is used for unregistering a name from the operator name map. */
@@ -1545,32 +1712,40 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		rootOperator.notifyRenaming(oldName, newName);
 	}
 
+	/**
+	 * This method is called when the operator given by {@code oldName} (and {@code oldOp} if it is not {@code null})
+	 * was replaced with the operator described by {@code newName} and {@code newOp}.
+	 * This will inform the {@link ProcessRootOperator} of the replacing.
+	 *
+	 * @param oldName
+	 * 		the name of the old operator
+	 * @param oldOp
+	 * 		the old operator; can be {@code null}
+	 * @param newName
+	 * 		the name of the new operator
+	 * @param newOp
+	 * 		the new operator; must not be {@code null}
+	 * @see Operator#notifyReplacing(String, Operator, String, Operator)
+	 * @since 9.3
+	 */
+	public void notifyReplacing(String oldName, Operator oldOp, String newName, Operator newOp) {
+		rootOperator.notifyReplacing(oldName, oldOp, newName, newOp);
+	}
+
 	@Override
 	public String toString() {
 		if (rootOperator == null) {
 			return "empty process";
 		} else {
-			return "Process:" + Tools.getLineSeparator() + rootOperator.getXML(true);
+			return "Process:" + Tools.getLineSeparator() + rootOperator.getXML(true, EncryptionProvider.DEFAULT_CONTEXT);
 		}
 	}
 
 	private final EventListenerList processSetupListeners = new EventListenerList();
 
 	/** Delegates any changes in the ProcessContext to the root operator. */
-	private final Observer<ProcessContext> delegatingContextObserver = new Observer<ProcessContext>() {
-
-		@Override
-		public void update(final Observable<ProcessContext> observable, final ProcessContext arg) {
-			fireUpdate();
-		}
-	};
-	private final Observer<Operator> delegatingOperatorObserver = new Observer<Operator>() {
-
-		@Override
-		public void update(final Observable<Operator> observable, final Operator arg) {
-			fireUpdate();
-		}
-	};
+	private final Observer<ProcessContext> delegatingContextObserver = (observable, arg) -> fireUpdate();
+	private final Observer<Operator> delegatingOperatorObserver = (observable, arg) -> fireUpdate();
 
 	public void addProcessSetupListener(final ProcessSetupListener listener) {
 		processSetupListeners.add(ProcessSetupListener.class, listener);
@@ -1623,17 +1798,35 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 		}
 	}
 
-	/** Resolves a repository location relative to {@link #getRepositoryLocation()}. */
-	public RepositoryLocation resolveRepositoryLocation(final String loc)
+	/**
+	 * Resolves a repository location relative to {@link #getRepositoryLocation()}.
+	 *
+	 * @param loc the location path
+	 * @deprecated since 9.7, use {@link #resolveRepositoryLocation(String, RepositoryLocationType)} instead
+	 */
+	@Deprecated
+	public RepositoryLocation resolveRepositoryLocation(final String loc) throws UserError, MalformedRepositoryLocationException {
+		return resolveRepositoryLocation(loc, RepositoryLocationType.UNKNOWN);
+	}
+
+	/**
+	 * Resolves a repository location relative to {@link #getRepositoryLocation()}. Don't forget to set further
+	 * properties on the returned location, e.g. {@link RepositoryLocation#setExpectedDataEntryType(Class)}!
+	 *
+	 * @param loc          the location path
+	 * @param locationType the type, e.g data or folder
+	 * @since 9.7
+	 */
+	public RepositoryLocation resolveRepositoryLocation(final String loc, RepositoryLocationType locationType)
 			throws UserError, MalformedRepositoryLocationException {
 		if (RepositoryLocation.isAbsolute(loc)) {
-			RepositoryLocation repositoryLocation = new RepositoryLocation(loc);
+			RepositoryLocation repositoryLocation = new RepositoryLocationBuilder().withLocationType(locationType).buildFromAbsoluteLocation(loc);
 			repositoryLocation.setAccessor(getRepositoryAccessor());
 			return repositoryLocation;
 		}
 		RepositoryLocation repositoryLocation = getRepositoryLocation();
 		if (repositoryLocation != null) {
-			RepositoryLocation repositoryLocation2 = new RepositoryLocation(repositoryLocation.parent(), loc);
+			RepositoryLocation repositoryLocation2 = new RepositoryLocationBuilder().withLocationType(locationType).buildFromParentLocation(repositoryLocation.parent(), loc);
 			repositoryLocation2.setAccessor(getRepositoryAccessor());
 			return repositoryLocation2;
 		} else {
@@ -1693,46 +1886,30 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 
 	// process location (file/repository)
 
-	/** Returns true iff either a file or a repository location is defined. */
+	/**
+	 * Returns if the process has a valid save location.
+	 *
+	 * @return {@code true} iff either a file location is defined or a repository location is defined AND the repository
+	 * is not read-only; {@code false} otherwise
+	 */
 	public boolean hasSaveDestination() {
-		return processLocation != null;
-	}
-
-	/**
-	 * Returns the current process file.
-	 *
-	 * @deprecated Use {@link #getProcessFile()} instead
-	 */
-	@Deprecated
-	public File getExperimentFile() {
-		return getProcessFile();
-	}
-
-	/**
-	 * Returns the current process file.
-	 *
-	 * @deprecated Use {@link #getProcessLocation()}
-	 */
-	@Deprecated
-	public File getProcessFile() {
-		if (processLocation instanceof FileProcessLocation) {
-			return ((FileProcessLocation) processLocation).getFile();
+		if (processLocation == null) {
+			return false;
+		}
+		if (processLocation instanceof RepositoryProcessLocation) {
+			RepositoryProcessLocation repoProcLoc = (RepositoryProcessLocation) processLocation;
+			try {
+				return !repoProcLoc.getRepositoryLocation().getRepository().isReadOnly();
+			} catch (RepositoryException e) {
+				return false;
+			}
 		} else {
-			return null;
+			return true;
 		}
 	}
 
-	/**
-	 * Sets the process file. This file might be used for resolving relative filenames.
-	 *
-	 * @deprecated Please use {@link #setProcessFile(File)} instead.
-	 */
-	@Deprecated
-	public void setExperimentFile(final File file) {
-		setProcessLocation(new FileProcessLocation(file));
-	}
-
 	/** Sets the process file. This file might be used for resolving relative filenames. */
+	@Deprecated
 	public void setProcessFile(final File file) {
 		setProcessLocation(new FileProcessLocation(file));
 	}
@@ -1828,6 +2005,36 @@ public class Process extends AbstractObservable<Process> implements Cloneable {
 				throw new Exception(
 						"The process contains dummy operators. Remove all dummy operators or install all missing extensions in order to save the process.");
 			}
+		}
+	}
+
+	/**
+	 * Checks if breakpoints are present in this process.
+	 *
+	 * @return {@code true}  if a breakpoint is present. {@code false}  otherwise
+	 * @author Joao Pedro Pinheiro
+	 * @since 8.2.0
+	 */
+	public boolean hasBreakpoints() {
+		for (Operator op: getAllOperators()) {
+			if (op.hasBreakpoint()) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Removes all breakpoints from the current process
+	 *
+	 * @author Joao Pedro Pinheiro
+	 * @since 8.2.0
+	 */
+	public void removeAllBreakpoints() {
+		for (Operator op: getAllOperators()) {
+			op.setBreakpoint(BreakpointListener.BREAKPOINT_BEFORE, false);
+			op.setBreakpoint(BreakpointListener.BREAKPOINT_AFTER, false);
 		}
 	}
 

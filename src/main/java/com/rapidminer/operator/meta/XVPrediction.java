@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,6 +19,7 @@
 package com.rapidminer.operator.meta;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 
 import com.rapidminer.example.Attribute;
@@ -196,8 +197,9 @@ public class XVPrediction extends OperatorChain implements CapabilityProvider {
 			getSubprocess(1).execute();
 
 			ExampleSet predictedSet = applyProcessExampleInnerSink.getData(ExampleSet.class);
+			Iterator<Example> iterator = predictedSet.iterator();
 			for (int i = 0; i < splittedSet.size(); i++) {
-				Example predictedExample = predictedSet.getExample(i);
+				Example predictedExample = iterator.next();
 				// setting label in inputSet
 				Example resultExample = resultSet.getExample(splittedSet.getActualParentIndex(i));
 				resultExample.setValue(predictedLabel, predictedExample.getPredictedLabel());

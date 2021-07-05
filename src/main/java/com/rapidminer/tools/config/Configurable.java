@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -20,6 +20,8 @@ package com.rapidminer.tools.config;
 
 import java.util.Map;
 
+import com.rapidminer.connection.ConnectionInformation;
+import com.rapidminer.connection.legacy.ConversionException;
 import com.rapidminer.repository.internal.remote.RemoteRepository;
 import com.rapidminer.tools.config.gui.ConfigurableDialog;
 
@@ -64,67 +66,67 @@ import com.rapidminer.tools.config.gui.ConfigurableDialog;
 public interface Configurable {
 
 	/** Sets the user defined unique name. */
-	public void setName(String name);
+	void setName(String name);
 
 	/** Gets the user defined unique name. */
-	public String getName();
+	String getName();
 
 	/**
 	 * Sets the given parameters.
 	 *
 	 * @see #getParameters()
 	 */
-	public void configure(Map<String, String> parameterValues);
+	void configure(Map<String, String> parameterValues);
 
 	/**
 	 * The parameter values representing this Configurable.
 	 *
 	 * @see #configure(Map)
 	 */
-	public Map<String, String> getParameters();
+	Map<String, String> getParameters();
 
 	/**
-	 * Returns the ID of this configurable in case it was retrieved from RapidMiner Server. This ID
+	 * Returns the ID of this configurable in case it was retrieved from RapidMiner AI Hub. This ID
 	 * must be used when editing and saving a configurable.
 	 *
 	 * @see #getSource()
-	 * @return -1 if this configurable was not loaded from RapidMiner Server
+	 * @return -1 if this configurable was not loaded from RapidMiner AI Hub
 	 */
-	public int getId();
+	int getId();
 
 	/**
 	 * Called when loading and creating configurables.
 	 *
 	 * @see #getId()
 	 */
-	public void setId(int id);
+	void setId(int id);
 
 	/**
-	 * If this configurable was loaded from a RapidMiner Server instance, this is the connection it
+	 * If this configurable was loaded from a RapidMiner AI Hub instance, this is the connection it
 	 * was loaded from. May be null for local entries.
 	 *
 	 * @see #getId()
 	 */
-	public RemoteRepository getSource();
+	RemoteRepository getSource();
 
-	/** Set when this configurable was loaded from a RapidMiner Server instance. */
-	public void setSource(RemoteRepository source);
+	/** Set when this configurable was loaded from a RapidMiner AI Hub instance. */
+	void setSource(RemoteRepository source);
 
 	/**
 	 * Gets the user defined short info which will be shown in the list on the left
 	 */
-	public String getShortInfo();
+	String getShortInfo();
 
 	/** Sets the parameter value for the given key **/
-	public void setParameter(String key, String value);
+	void setParameter(String key, String value);
 
 	/** Gets the parameter value for the given key **/
-	public String getParameter(String key);
+	String getParameter(String key);
 
 	/**
 	 * Compares the name and the parameter values of this Configurable with a given Configurable
 	 **/
-	public boolean hasSameValues(Configurable comparedConfigurable);
+	boolean hasSameValues(Configurable comparedConfigurable);
 
 	/**
 	 * Checks if the Configurable is empty (has no values/only empty values/default values)
@@ -134,9 +136,33 @@ public interface Configurable {
 	 * @deprecated Use {@link AbstractConfigurable#isEmptyOrDefault(AbstractConfigurator)} instead.
 	 **/
 	@Deprecated
-	public boolean isEmptyOrDefault(Configurator<? extends Configurable> configurator);
+	boolean isEmptyOrDefault(Configurator<? extends Configurable> configurator);
 
 	/** Returns the type id of the corresponding {@link Configurator}. */
-	public String getTypeId();
+	String getTypeId();
+
+	/**
+	 * Returns whether this type of {@link Configurable} supports the new {@link ConnectionInformation} management.
+	 *
+	 * @return {@code false} by default
+	 * @since 9.3
+	 */
+	default boolean supportsNewConnectionManagement() {
+		return false;
+	}
+
+	/**
+	 * Converts this {@link Configurable} to a {@link ConnectionInformation} if possible.
+	 *
+	 * @throws UnsupportedOperationException
+	 * 		if this type of {@link Configurable} does not support the new connection management
+	 * @throws ConversionException
+	 * 		if an error occurred while converting the {@link Configurable}
+	 * @see #supportsNewConnectionManagement()
+	 * @since 9.3
+	 */
+	default ConnectionInformation convert() throws ConversionException {
+		throw new UnsupportedOperationException("Conversion not available for configurables of type " + getTypeId());
+	}
 
 }

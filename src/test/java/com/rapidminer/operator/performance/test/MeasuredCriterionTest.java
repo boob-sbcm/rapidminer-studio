@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -97,7 +97,7 @@ public class MeasuredCriterionTest extends AbstractCriterionTestCase {
 
 		c1.buildAverage(c2);
 		assertEquals(c1.getName() + " average", expectedOverall, c1.getMikroAverage(), 0.00000001);
-		assertEquals(c1.getName() + " makro average", (expected1 + expected2) / 2.0, c1.getMakroAverage(), 0.00000001);
+		assertEquals(c1.getName() + " macro average", (expected1 + expected2) / 2.0, c1.getMakroAverage(), 0.00000001);
 	}
 
 	@Test

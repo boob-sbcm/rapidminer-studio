@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,11 @@
 */
 package com.rapidminer.operator.libraries;
 
+import java.io.OutputStream;
+import java.io.Serializable;
+import java.util.List;
+import java.util.Set;
+
 import com.rapidminer.gui.tools.VersionNumber;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorCreationException;
@@ -27,18 +32,15 @@ import com.rapidminer.tools.OperatorService;
 import com.rapidminer.tools.documentation.OperatorDocBundle;
 import com.rapidminer.tools.documentation.OperatorDocumentation;
 
-import java.io.OutputStream;
-import java.io.Serializable;
-import java.util.List;
-import java.util.Set;
-
 
 /**
  * This is the interface for all OperatorLibraries. These are objects that contain the description
  * of an arbitrary number of Operators, together with their documentation.
  * 
  * @author Sebastian Land
+ * @deprecated since 9.7, but was unused even before
  */
+@Deprecated
 public interface OperatorLibrary extends Serializable {
 
 	/**

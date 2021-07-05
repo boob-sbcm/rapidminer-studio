@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,8 +18,6 @@
 */
 package com.rapidminer.repository;
 
-
-
 /**
  * An entry that can store processes.
  * 
@@ -28,10 +26,34 @@ package com.rapidminer.repository;
  */
 public interface ProcessEntry extends DataEntry {
 
-	public static final String TYPE_NAME = "process";
+	String TYPE_NAME = "process";
+	String RMP_SUFFIX = ".rmp";
 
-	public String retrieveXML() throws RepositoryException;
+	@Override
+	default String getType() {
+		return TYPE_NAME;
+	}
 
-	public void storeXML(String xml) throws RepositoryException;
+	/**
+	 * Retrieves the XML of the process stored here.
+	 * <strong>Important:</strong> The XML may contain secret values, which probably have been encrypted with an
+	 * encryption context! See
+	 * {@link com.rapidminer.tools.encryption.EncryptionProvider} and {@link Repository#getEncryptionContext()} for
+	 * reference. Loading it with a wrong encryption context will cause the decryption of those secret values to fail!
+	 *
+	 * @throws RepositoryException if loading goes wrong
+	 */
+	String retrieveXML() throws RepositoryException;
+
+	/**
+	 * Stores the XML of the process here.
+	 * <strong>Important:</strong> Make sure that the XML has secret values encrypted with the proper encryption context! See
+	 * {@link com.rapidminer.tools.encryption.EncryptionProvider} and {@link Repository#getEncryptionContext()} for
+	 * reference. Otherwise, loading it again later will fail!
+	 *
+	 * @param xml the XML generated with the correct encryption context for this repository
+	 * @throws RepositoryException if storing goes wrong
+	 */
+	void storeXML(String xml) throws RepositoryException;
 
 }

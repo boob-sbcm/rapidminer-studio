@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -105,10 +105,8 @@ public class CopyFileOperator extends Operator {
 		if (newFile.isDirectory()) {
 			newFile = new File(newFile.getAbsoluteFile() + File.separator + new File(sourceFileName).getName());
 		}
-		if ((!(newFile.exists()) || overwrite) && new File(sourceFileName).exists()) {
-			try {
-				InputStream in = new FileInputStream(sourceFileName);
-				OutputStream out = new FileOutputStream(newFile);
+		if ((!newFile.exists() || overwrite) && new File(sourceFileName).exists()) {
+			try (InputStream in = new FileInputStream(sourceFileName); OutputStream out = new FileOutputStream(newFile)) {
 				Tools.copyStreamSynchronously(in, out, true);
 			} catch (IOException e) {
 				throw new UserError(this, e, "copy_file.ioerror", sourceFileName, newFileName, e.getLocalizedMessage());

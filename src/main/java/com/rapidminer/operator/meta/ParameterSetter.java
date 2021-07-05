@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -111,6 +111,7 @@ public class ParameterSetter extends Operator {
 				new ParameterTypeString("operator_name",
 						"The name of an operator in the process setup, which parameters should be set in according to the parameter set."));
 		type.setExpert(false);
+		type.setPrimary(true);
 		types.add(type);
 		return types;
 	}

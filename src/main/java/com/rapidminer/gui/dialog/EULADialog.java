@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -78,7 +78,7 @@ public class EULADialog extends ButtonDialog implements AdjustmentListener, Chan
 	/**
 	 * Should be adjusted whenever the EULA is updated.
 	 */
-	private static final String ACCEPT_PROPERTY = "rapidminer.eula.v6.accepted";
+	private static final String ACCEPT_PROPERTY = "rapidminer.eula.v7.accepted";
 
 	private final JButton acceptButton;
 	private final JCheckBox acceptCheckBox;
@@ -126,7 +126,7 @@ public class EULADialog extends ButtonDialog implements AdjustmentListener, Chan
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent e) {
+				public void loggedActionPerformed(ActionEvent e) {
 					ConfirmDialog.this.returnCode = YES_OPTION;
 					ConfirmDialog.this.setVisible(false);
 				}
@@ -137,7 +137,7 @@ public class EULADialog extends ButtonDialog implements AdjustmentListener, Chan
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent e) {
+				public void loggedActionPerformed(ActionEvent e) {
 					ConfirmDialog.this.returnCode = NO_OPTION;
 					ConfirmDialog.this.setVisible(false);
 				}
@@ -234,7 +234,7 @@ public class EULADialog extends ButtonDialog implements AdjustmentListener, Chan
 			private static final long serialVersionUID = 3102243518938674477L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				// store decision and close dialog
 				EULADialog.setEULAAccepted(true);
 				dispose();
@@ -279,7 +279,7 @@ public class EULADialog extends ButtonDialog implements AdjustmentListener, Chan
 			private static final long serialVersionUID = 3102243518938674477L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				ConfirmDialog dialog = new ConfirmDialog();
 				dialog.setVisible(true);
 				dialog.requestFocusInWindow();

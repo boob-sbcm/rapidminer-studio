@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -26,8 +26,8 @@ import java.awt.Graphics2D;
 import java.awt.Paint;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
-
 import javax.swing.AbstractButton;
 import javax.swing.ButtonModel;
 import javax.swing.JComboBox;
@@ -78,6 +78,73 @@ public final class RapidLookTools {
 	 */
 	public static final String PROPERTY_INPUT_BACKGROUND_DARK = "input_dark_bg";
 
+	/**
+	 * If buttons should be highlighted in orange or not. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 8.1
+	 */
+	public static final String PROPERTY_BUTTON_HIGHLIGHT = "button_highlight";
+
+	/**
+	 * If buttons should be highlighted in dark gray or not. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 8.1.2
+	 */
+	public static final String PROPERTY_BUTTON_HIGHLIGHT_DARK = "button_highlight_dark";
+
+	/**
+	 * If buttons should be highlighted in white or not. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 9.2.0
+	 */
+	public static final String PROPERTY_BUTTON_HIGHLIGHT_WHITE = "button_highlight_white";
+
+	/**
+	 * If buttons should have a darker border. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 8.1
+	 */
+	public static final String PROPERTY_BUTTON_DARK_BORDER = "button_dark_border";
+
+	/**
+	 * If buttons should be circular. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 8.1.2
+	 */
+	public static final String PROPERTY_BUTTON_CIRCLE = "button_circular";
+
+	/**
+	 * If buttons should be painted as a toolbar button. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 9.7
+	 */
+	public static final String PROPERTY_BUTTON_PAINT_AS_TOOLBAR_BUTTON = "button_paint_as_toolbar_button";
+
+	/**
+	 * If input fields should have a darker border. Set to {@code true} or {@code false}. Default is {@code false}.
+	 *
+	 * @since 8.1
+	 */
+	public static final String PROPERTY_INPUT_DARK_BORDER = "input_dark_border";
+
+	/**
+	 * If input fields should be part of a composite input/button. Normally, each component has rounded borders all around so they look good as a standalone field.
+	 * If you want to have inputs and buttons right next to each other with no padding, this would look ugly.
+	 * Setting this to either {@link javax.swing.SwingConstants#LEFT}, {@link javax.swing.SwingConstants#CENTER} or {@link javax.swing.SwingConstants#RIGHT}
+	 * will produce a composite input border which is not rounded on the right, both sides, or the left respectively. Default is {@code -1}, aka standalone with round borders all around.
+	 *
+	 * @since 8.1
+	 */
+	public static final String PROPERTY_INPUT_TYPE_COMPOSITE = "input_type_composite";
+
+	/**
+	 * If a tabbed pane should lay out its tabs at the top (horizontally) using the full available width - and not more.
+	 * So 2 tabs would take ~50% each, 3 tabs ~33% each, etc.
+	 *
+	 * @since 9.4.0
+	 */
+	public static final String PROPERTY_TABBED_PANE_FULL_WIDTH = "tabbed_pane_full_width";
+
 	static {
 		try {
 			VLToolBar.class.getName();
@@ -105,20 +172,20 @@ public final class RapidLookTools {
 		g.setColor(oldColor);
 	}
 
-	public static boolean drawMenuItemFading(Component c, Graphics g) {
+	public static void drawMenuItemFading(Component c, Graphics g) {
 		int w = c.getWidth();
 		int h = c.getHeight();
 		if (h < 0 || w < 0) {
-			return true;
+			return;
 		}
 
 		g.setColor(Colors.MENU_ITEM_BACKGROUND);
-		g.fillRect(0, 0, c.getWidth(), c.getHeight());
-		return true;
+		g.fillRect(0, 0, w, h);
 	}
 
 	public static boolean isToolbarButton(JComponent b) {
-		return b.getParent() instanceof JToolBar || vlDockingAvailable && isVLToolbarButton(b);
+		boolean paintAsToolbarButton = Boolean.parseBoolean(String.valueOf(b.getClientProperty(RapidLookTools.PROPERTY_BUTTON_PAINT_AS_TOOLBAR_BUTTON)));
+		return b.getParent() instanceof JToolBar || vlDockingAvailable && isVLToolbarButton(b) || paintAsToolbarButton;
 	}
 
 	public static boolean isVLToolbarButton(JComponent b) {
@@ -171,9 +238,14 @@ public final class RapidLookTools {
 	public static Shape createShapeForButton(AbstractButton b) {
 		int w = b.getWidth();
 		int h = b.getHeight();
+		boolean circular = Boolean.parseBoolean(String.valueOf(b.getClientProperty(RapidLookTools.PROPERTY_BUTTON_CIRCLE)));
 
-		return new RoundRectangle2D.Double(1, 1, w - 2, h - 2, RapidLookAndFeel.CORNER_DEFAULT_RADIUS,
-				RapidLookAndFeel.CORNER_DEFAULT_RADIUS);
+		if (circular) {
+			return createCircle(w, h);
+		} else {
+			return new RoundRectangle2D.Double(1, 1, w - 2, h - 2, RapidLookAndFeel.CORNER_DEFAULT_RADIUS,
+					RapidLookAndFeel.CORNER_DEFAULT_RADIUS);
+		}
 	}
 
 	/**
@@ -186,9 +258,14 @@ public final class RapidLookTools {
 	public static Shape createBorderShapeForButton(AbstractButton b) {
 		int w = b.getWidth();
 		int h = b.getHeight();
+		boolean circular = Boolean.parseBoolean(String.valueOf(b.getClientProperty(RapidLookTools.PROPERTY_BUTTON_CIRCLE)));
 
-		return new RoundRectangle2D.Double(0, 0, w - 1, h - 1, RapidLookAndFeel.CORNER_DEFAULT_RADIUS,
-				RapidLookAndFeel.CORNER_DEFAULT_RADIUS);
+		if (circular) {
+			return createCircle(w, h);
+		} else {
+			return new RoundRectangle2D.Double(0, 0, w - 1, h - 1, RapidLookAndFeel.CORNER_DEFAULT_RADIUS,
+					RapidLookAndFeel.CORNER_DEFAULT_RADIUS);
+		}
 	}
 
 	/**
@@ -202,15 +279,29 @@ public final class RapidLookTools {
 		Graphics2D g2 = (Graphics2D) g;
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-		if (b.isEnabled()) {
-			if (b.hasFocus()) {
-				g2.setColor(Colors.BUTTON_BORDER_FOCUS);
+		boolean darkBorder = Boolean.parseBoolean(String.valueOf(b.getClientProperty(RapidLookTools.PROPERTY_BUTTON_DARK_BORDER)));
+		if (darkBorder) {
+			if (b.isEnabled()) {
+				if (b.hasFocus()) {
+					g2.setColor(Colors.BUTTON_BORDER_DARK_FOCUS);
+				} else {
+					g2.setColor(Colors.BUTTON_BORDER_DARK);
+				}
 			} else {
-				g2.setColor(Colors.BUTTON_BORDER);
+				g2.setColor(Colors.BUTTON_BORDER_DARK_DISABLED);
 			}
 		} else {
-			g2.setColor(Colors.BUTTON_BORDER_DISABLED);
+			if (b.isEnabled()) {
+				if (b.hasFocus()) {
+					g2.setColor(Colors.BUTTON_BORDER_FOCUS);
+				} else {
+					g2.setColor(Colors.BUTTON_BORDER);
+				}
+			} else {
+				g2.setColor(Colors.BUTTON_BORDER_DISABLED);
+			}
 		}
+
 
 		g2.draw(shape);
 	}
@@ -227,27 +318,99 @@ public final class RapidLookTools {
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
 		int h = (int) shape.getBounds().getHeight();
-		if (b.isEnabled()) {
-			if (b.getModel().isPressed() || b.getModel().isSelected()) {
-				Paint gp = new GradientPaint(0, 0, Colors.BUTTON_BACKGROUND_PRESSED_GRADIENT_START, 0, h,
-						Colors.BUTTON_BACKGROUND_PRESSED_GRADIENT_END);
-				g2.setPaint(gp);
-			} else if (b.getModel().isRollover()) {
-				Paint gp = new GradientPaint(0, 0, Colors.BUTTON_BACKGROUND_ROLLOVER_GRADIENT_START, 0, h,
-						Colors.BUTTON_BACKGROUND_ROLLOVER_GRADIENT_END);
-				g2.setPaint(gp);
+		ColorUIResource colorGradientStart;
+		ColorUIResource colorGradientEnd;
+		boolean highlighted = Boolean.parseBoolean(String.valueOf(b.getClientProperty(PROPERTY_BUTTON_HIGHLIGHT)));
+		boolean highlightedDark = Boolean.parseBoolean(String.valueOf(b.getClientProperty(PROPERTY_BUTTON_HIGHLIGHT_DARK)));
+		boolean highlightedWhite = Boolean.parseBoolean(String.valueOf(b.getClientProperty(PROPERTY_BUTTON_HIGHLIGHT_WHITE)));
+		if (highlighted) {
+			if (b.isEnabled()) {
+				if (b.getModel().isPressed() || b.getModel().isSelected()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_PRESSED_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_PRESSED_GRADIENT_END;
+				} else if (b.getModel().isRollover()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_ROLLOVER_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_ROLLOVER_GRADIENT_END;
+				} else {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_GRADIENT_END;
+				}
 			} else {
-				Paint gp = new GradientPaint(0, 0, Colors.BUTTON_BACKGROUND_GRADIENT_START, 0, h,
-						Colors.BUTTON_BACKGROUND_GRADIENT_END);
-				g2.setPaint(gp);
+				colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DISABLED_GRADIENT_START;
+				colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DISABLED_GRADIENT_END;
+			}
+		} else if (highlightedDark) {
+			if (b.isEnabled()) {
+				if (b.getModel().isPressed() || b.getModel().isSelected()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_PRESSED_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_PRESSED_GRADIENT_END;
+				} else if (b.getModel().isRollover()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_ROLLOVER_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_ROLLOVER_GRADIENT_END;
+				} else {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_GRADIENT_END;
+				}
+			} else {
+				colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_DISABLED_GRADIENT_START;
+				colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_DARK_DISABLED_GRADIENT_END;
+			}
+		} else if (highlightedWhite) {
+			if (b.isEnabled()) {
+				if (b.getModel().isPressed() || b.getModel().isSelected()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_PRESSED_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_PRESSED_GRADIENT_END;
+				} else if (b.getModel().isRollover()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_ROLLOVER_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_ROLLOVER_GRADIENT_END;
+				} else {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_GRADIENT_END;
+				}
+			} else {
+				colorGradientStart = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_DISABLED_GRADIENT_START;
+				colorGradientEnd = Colors.BUTTON_BACKGROUND_HIGHLIGHTED_WHITE_DISABLED_GRADIENT_END;
 			}
 		} else {
-			Paint gp = new GradientPaint(0, 0, Colors.BUTTON_BACKGROUND_DISABLED_GRADIENT_START, 0, h,
-					Colors.BUTTON_BACKGROUND_DISABLED_GRADIENT_END);
-			g2.setPaint(gp);
+			if (b.isEnabled()) {
+				if (b.getModel().isPressed() || b.getModel().isSelected()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_PRESSED_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_PRESSED_GRADIENT_END;
+				} else if (b.getModel().isRollover()) {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_ROLLOVER_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_ROLLOVER_GRADIENT_END;
+				} else {
+					colorGradientStart = Colors.BUTTON_BACKGROUND_GRADIENT_START;
+					colorGradientEnd = Colors.BUTTON_BACKGROUND_GRADIENT_END;
+				}
+			} else {
+				colorGradientStart = Colors.BUTTON_BACKGROUND_DISABLED_GRADIENT_START;
+				colorGradientEnd = Colors.BUTTON_BACKGROUND_DISABLED_GRADIENT_END;
+			}
 		}
+
+		Paint gp = new GradientPaint(0, 0, colorGradientStart, 0, h, colorGradientEnd);
+		g2.setPaint(gp);
 
 		g2.fill(shape);
 	}
 
+	/**
+	 * Creates a circle of a rectangle with the given width and height. Must have at least 16px of width and height, otherwise results will be broken.
+	 *
+	 * @param width
+	 * 		the width
+	 * @param height
+	 * 		the height
+	 * @return the ellipsis, never {@code null}
+	 */
+	private static Ellipse2D.Double createCircle(int width, int height) {
+		int centerX = (1 + width) / 2 + 1;
+		int centerY = (1 + height - 1) / 2;
+		int cornerX = centerX + width / 2 - 6;
+		int cornerY = centerY + width / 2 - 6;
+		Ellipse2D.Double circle = new Ellipse2D.Double();
+		circle.setFrameFromCenter(centerX, centerY, cornerX, cornerY);
+		return circle;
+	}
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -19,9 +19,10 @@
 package com.rapidminer.repository.gui.actions;
 
 import java.awt.event.ActionEvent;
-import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.rapidminer.gui.operatortree.actions.CutCopyPasteDeleteAction;
 import com.rapidminer.gui.tools.ProgressThread;
@@ -29,7 +30,10 @@ import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.gui.tools.dialogs.ConfirmDialog;
 import com.rapidminer.repository.Entry;
+import com.rapidminer.repository.Folder;
+import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryTools;
 import com.rapidminer.repository.gui.RepositoryTree;
 
 
@@ -42,7 +46,7 @@ import com.rapidminer.repository.gui.RepositoryTree;
 public abstract class AbstractRepositoryAction<T extends Entry> extends ResourceAction {
 
 	/** the tree to which the action belongs to */
-	protected final RepositoryTree tree;
+	protected final transient RepositoryTree tree;
 
 	/** the required selection type for the action to show/enable */
 	private final Class<T> requiredSelectionType;
@@ -81,7 +85,7 @@ public abstract class AbstractRepositoryAction<T extends Entry> extends Resource
 				enable = false;
 				break;
 			}
-			if (!requiredSelectionType.isInstance(entry)) {
+			if (!requiredSelectionType.isAssignableFrom(entry.getClass())) {
 				enable = false;
 				break;
 			}
@@ -97,7 +101,7 @@ public abstract class AbstractRepositoryAction<T extends Entry> extends Resource
 	}
 
 	@Override
-	public void actionPerformed(ActionEvent e) {
+	public void loggedActionPerformed(ActionEvent e) {
 
 		List<Entry> entries = tree.getSelectedEntries();
 
@@ -105,6 +109,14 @@ public abstract class AbstractRepositoryAction<T extends Entry> extends Resource
 		if (e.getActionCommand().equals(DeleteRepositoryEntryAction.I18N_KEY)
 				|| e.getActionCommand().equals(CutCopyPasteDeleteAction.DELETE_ACTION_COMMAND_KEY)) {
 			if (entries.size() == 1) {
+				try {
+					Folder connectionFolder = RepositoryTools.getConnectionFolder(entries.get(0).getLocation().getRepository());
+					if (connectionFolder != null && connectionFolder.getLocation().getAbsoluteLocation().equals(entries.get(0).getLocation().getAbsoluteLocation())) {
+						return;
+					}
+				} catch (RepositoryException e1) {
+					// ignore, should not happen anyway and is irrelevant here. Worst case, you get the delete dialog if you should not, but backend blocks delete anyway
+				}
 				if (SwingTools.showConfirmDialog("file_chooser.delete", ConfirmDialog.YES_NO_OPTION,
 						entries.get(0).getName()) != ConfirmDialog.YES_OPTION) {
 					return;
@@ -163,22 +175,12 @@ public abstract class AbstractRepositoryAction<T extends Entry> extends Resource
 	protected List<Entry> removeIntersectedEntries(List<Entry> entries) {
 
 		// Get locations of entries
-		List<RepositoryLocation> locations = new LinkedList<>();
-		for (Entry entry : entries) {
-			locations.add(entry.getLocation());
-		}
+		Map<RepositoryLocation, Entry> locations = entries.stream().collect(Collectors.toMap(Entry::getLocation, Function.identity()));
 
 		// Remove intersected locations
-		locations = RepositoryLocation.removeIntersectedLocations(locations);
+		List<RepositoryLocation> filteredLocations = RepositoryLocation.removeIntersectedLocations(locations.keySet());
 
-		// Remove entries of intersected locations
-		Iterator<Entry> entryIt = entries.iterator();
-		while (entryIt.hasNext()) {
-			if (!locations.contains(entryIt.next().getLocation())) {
-				entryIt.remove();
-			}
-		}
-
-		return entries;
+		// return entries
+		return filteredLocations.stream().map(locations::get).collect(Collectors.toList());
 	}
 }

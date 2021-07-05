@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,11 +18,6 @@
 */
 package com.rapidminer.tools;
 
-import com.rapidminer.Process;
-import com.rapidminer.RapidMiner;
-import com.rapidminer.gui.RapidMinerGUI;
-import com.rapidminer.tools.plugin.Plugin;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -33,15 +28,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import org.apache.xmlrpc.client.XmlRpcClient;
+import com.rapidminer.Process;
+import com.rapidminer.RapidMiner;
+import com.rapidminer.gui.RapidMinerGUI;
+import com.rapidminer.tools.encryption.EncryptionProvider;
+import com.rapidminer.tools.plugin.Plugin;
 
 
 /**
@@ -50,6 +47,7 @@ import org.apache.xmlrpc.client.XmlRpcClient;
  * 
  * @author Simon Fischer, Ingo Mierswa, Marco Boeck
  */
+@Deprecated
 public class BugReport {
 
 	private static final int BUFFER_SIZE = 1024;
@@ -89,9 +87,9 @@ public class BugReport {
 		buffer.append("------------" + Tools.getLineSeparator() + Tools.getLineSeparator());
 
 		BufferedReader reader = null;
-		try {
+		try (FileReader fr = new FileReader(FileSystemService.getLogFile())) {
 			List<String> logLineList = new LinkedList<>();
-			reader = new BufferedReader(new FileReader(FileSystemService.getLogFile()));
+			reader = new BufferedReader(fr);
 			String line = reader.readLine();
 			while (line != null) {
 				logLineList.add(line);
@@ -163,7 +161,8 @@ public class BugReport {
 		ZipOutputStream zipOut = new ZipOutputStream(new FileOutputStream(reportFile));
 		zipOut.setComment("RapidMiner bug report - generated " + new Date());
 		write("message.txt", "User message", userMessage, zipOut);
-		write("_process.xml", "Process as in memory.", process.getRootOperator().getXML(false), zipOut);
+		// XML gets encrypted if it contains passwords, they are of no use to us anyway
+		write("_process.xml", "Process as in memory.", process.getRootOperator().getXML(false, EncryptionProvider.DEFAULT_CONTEXT), zipOut);
 		if (process.getProcessLocation() != null) {
 			try {
 				String contents = process.getProcessLocation().getRawXML();
@@ -184,198 +183,6 @@ public class BugReport {
 		zipOut.close();
 	}
 
-	/**
-	 * Creates the BugZilla bugreport.
-	 * 
-	 * @param client
-	 *            the logged in BugZilla client
-	 * @param exception
-	 *            the exception which was thrown by the bug
-	 * @param userSummary
-	 *            summary of the bug
-	 * @param completeDescription
-	 *            description of the bug
-	 * @param component
-	 *            the component which malfunctionied
-	 * @param version
-	 *            the RM version
-	 * @param severity
-	 *            the severity of the bug
-	 * @param platform
-	 *            the platform (e.g. PC or Mac)
-	 * @param os
-	 *            the OS
-	 * @param attachments
-	 *            a list of optional attachements
-	 * @param attachProcess
-	 *            if <code>true</code>, will attach the current process xml
-	 * @param attachSystemProps
-	 *            if <code>true</code>, will attach system properties
-	 * @throws Exception
-	 */
-	public static void createBugZillaReport(XmlRpcClient client, Throwable exception, String userSummary,
-			String completeDescription, String component, String version, String severity, String platform, String os,
-			File[] attachments, boolean attachProcess, boolean attachSystemProps, boolean attachLogFile) throws Exception {
-
-		// create temp files with all the data we need
-		// create process xml file for later attachement if user agreed to it
-		File processFile = File.createTempFile("_process", ".xml");
-		processFile.deleteOnExit();
-		String xmlProcess;
-		if (RapidMinerGUI.getMainFrame().getProcess().getProcessLocation() != null) {
-			try {
-				xmlProcess = RapidMinerGUI.getMainFrame().getProcess().getProcessLocation().getRawXML();
-			} catch (Throwable t) {
-				xmlProcess = "could not read: " + t;
-			}
-		} else {
-			xmlProcess = "no process available";
-		}
-		writeFile(processFile, xmlProcess);
-
-		// create system properties tempfile for later attachement if user agreed to it
-		File propertiesFile = File.createTempFile("_properties", ".txt");
-		propertiesFile.deleteOnExit();
-		writeFile(propertiesFile, getProperties());
-
-		// create log tempfile (last MAX_LOGFILE_LINES rows) for later attachement
-		File logTempFile = File.createTempFile("_log", ".txt");
-		logTempFile.delete();
-		writeFile(logTempFile, getRelevantLogContent());
-
-		// append the RM version to the description
-		StringBuffer buffer = new StringBuffer(completeDescription);
-		buffer.append(Tools.getLineSeparator());
-		buffer.append(Tools.getLineSeparator());
-		buffer.append(getStackTrace(exception));
-		buffer.append(Tools.getLineSeparator());
-		buffer.append(Tools.getLineSeparator());
-		buffer.append("RapidMiner: ");
-		buffer.append(RapidMiner.getVersion());
-		buffer.append(Tools.getLineSeparator());
-		for (Plugin plugin : Plugin.getAllPlugins()) {
-			buffer.append(plugin.getName());
-			buffer.append(": ");
-			buffer.append(plugin.getVersion());
-			buffer.append(Tools.getLineSeparator());
-		}
-		completeDescription = buffer.toString();
-
-		// call BugZilla via xml-rpc
-		XmlRpcClient rpcClient = client;
-
-		Map<String, String> bugMap = new HashMap<>();
-		bugMap.put("product", "RapidMiner");
-		bugMap.put("component", component);
-		bugMap.put("summary", userSummary);
-		bugMap.put("description", completeDescription);
-		bugMap.put("version", version);
-		bugMap.put("op_sys", os);
-		bugMap.put("platform", platform);
-		bugMap.put("severity", severity);
-		bugMap.put("status", "NEW");
-
-		Map<?, ?> createResult = (Map<?, ?>) rpcClient.execute("Bug.create", new Object[] { bugMap });
-		// LogService.getRoot().fine("Bug submitted successfully. Bug ID: " +
-		// createResult.get("id"));
-		LogService.getRoot().log(Level.FINE, "com.rapidminer.tools.BugReport.bug_submitted", createResult.get("id"));
-
-		String id = String.valueOf(createResult.get("id"));
-		Map<String, Object> attachmentMap = new HashMap<>();
-		FileInputStream fileInputStream = null;
-		// add process xml file attachment if selected
-		if (attachProcess) {
-			attachmentMap.put("ids", new String[] { id });
-			// BugZilla API states Base64 encoded string is needed, but it does not work
-			// attachmentMap.put("data", Base64.encodeFromFile(processFile.getPath()));
-			try {
-				fileInputStream = new FileInputStream(processFile);
-				byte[] data = new byte[(int) processFile.length()];
-				fileInputStream.read(data);
-				attachmentMap.put("data", data);
-				attachmentMap.put("file_name", "process.xml");
-				attachmentMap.put("summary", "process.xml");
-				attachmentMap.put("content_type", "application/xml");
-
-				createResult = (Map<?, ?>) rpcClient.execute("Bug.add_attachment", new Object[] { attachmentMap });
-				attachmentMap.clear();
-			} finally {
-				if (fileInputStream != null) {
-					fileInputStream.close();
-				}
-			}
-		}
-
-		// add system properties file attachment if selected
-		if (attachSystemProps) {
-			attachmentMap.put("ids", new String[] { id });
-			// BugZilla API states Base64 encoded string is needed, but it does not work
-			// attachmentMap.put("data", Base64.encodeFromFile(propertiesFile.getPath()));
-			try {
-				fileInputStream = new FileInputStream(propertiesFile);
-				byte[] data = new byte[(int) propertiesFile.length()];
-				fileInputStream.read(data);
-				attachmentMap.put("data", data);
-				attachmentMap.put("file_name", "system-properties.txt");
-				attachmentMap.put("summary", "system-properties.txt");
-				attachmentMap.put("content_type", "text/plain");
-
-				createResult = (Map<?, ?>) rpcClient.execute("Bug.add_attachment", new Object[] { attachmentMap });
-				attachmentMap.clear();
-			} finally {
-				if (fileInputStream != null) {
-					fileInputStream.close();
-				}
-			}
-		}
-
-		// add rm.log file attachment
-		if (attachLogFile) {
-			attachmentMap.put("ids", new String[] { id });
-			// BugZilla API states Base64 encoded string is needed, but it does not work
-			// attachmentMap.put("data", Base64.encodeFromFile(propertiesFile.getPath()));
-			try {
-				fileInputStream = new FileInputStream(logTempFile);
-				byte[] data = new byte[(int) logTempFile.length()];
-				fileInputStream.read(data);
-				attachmentMap.put("data", data);
-				attachmentMap.put("file_name", "rm.log");
-				attachmentMap.put("summary", "rm.log");
-				attachmentMap.put("content_type", "text/plain");
-
-				createResult = (Map<?, ?>) rpcClient.execute("Bug.add_attachment", new Object[] { attachmentMap });
-				attachmentMap.clear();
-			} finally {
-				if (fileInputStream != null) {
-					fileInputStream.close();
-				}
-			}
-		}
-
-		// add attachments by user
-		for (File file : attachments) {
-			attachmentMap.put("ids", new String[] { id });
-			// BugZilla API states Base64 encoded string is needed, but it does not work
-			// attachmentMap.put("data", Base64.encodeFromFile(file.getPath()));
-			try {
-				fileInputStream = new FileInputStream(file);
-				byte[] data = new byte[(int) file.length()];
-				fileInputStream.read(data);
-				attachmentMap.put("data", data);
-				attachmentMap.put("file_name", file.getName());
-				attachmentMap.put("summary", file.getName());
-				attachmentMap.put("content_type", "application/data");
-
-				createResult = (Map<?, ?>) rpcClient.execute("Bug.add_attachment", new Object[] { attachmentMap });
-				attachmentMap.clear();
-			} finally {
-				if (fileInputStream != null) {
-					fileInputStream.close();
-				}
-			}
-		}
-
-	}
 
 	/**
 	 * Creates the complete description of the bug including user description, exception stack
@@ -429,7 +236,8 @@ public class BugReport {
 			String xmlProcess;
 			if (RapidMinerGUI.getMainFrame().getProcess() != null) {
 				try {
-					xmlProcess = RapidMinerGUI.getMainFrame().getProcess().getRootOperator().getXML(false);
+					// XML gets encrypted if it contains passwords, they are of no use to us anyway
+					xmlProcess = RapidMinerGUI.getMainFrame().getProcess().getRootOperator().getXML(false, EncryptionProvider.DEFAULT_CONTEXT);
 				} catch (Throwable t) {
 					xmlProcess = "could not read: " + t;
 				}
@@ -458,9 +266,7 @@ public class BugReport {
 	}
 
 	private static void writeFile(File file, ZipOutputStream out) throws IOException {
-		InputStream in = null;
-		try {
-			in = new FileInputStream(file);
+		try (InputStream in = new FileInputStream(file)) {
 			out.putNextEntry(new ZipEntry(file.getName()));
 			byte[] buffer = new byte[BUFFER_SIZE];
 			int read = -1;
@@ -471,12 +277,6 @@ public class BugReport {
 				}
 			} while (read > -1);
 			out.closeEntry();
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			if (in != null) {
-				in.close();
-			}
 		}
 	}
 
@@ -493,8 +293,8 @@ public class BugReport {
 	}
 
 	private static void writeFile(File file, String contents) throws IOException {
-		FileWriter writer = new FileWriter(file);
-		writer.write(contents);
-		writer.close();
+		try (FileWriter writer = new FileWriter(file)) {
+			writer.write(contents);
+		}
 	}
 }

@@ -1,28 +1,27 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.new_plotter.gui;
 
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JColorChooser;
@@ -39,13 +38,15 @@ import com.rapidminer.gui.new_plotter.listener.events.PlotConfigurationChangeEve
 import com.rapidminer.gui.new_plotter.listener.events.PlotConfigurationChangeEvent.PlotConfigurationChangeType;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.ResourceLabel;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 
 
 /**
  * @author Nils Woehler, Marius Helf
- *
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class LegendConfigurationPanel extends AbstractConfigurationPanel {
 
 	private static final long serialVersionUID = 1L;
@@ -124,7 +125,7 @@ public class LegendConfigurationPanel extends AbstractConfigurationPanel {
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent e) {
+				public void loggedActionPerformed(ActionEvent e) {
 					createLegendFontDialog();
 				}
 			});
@@ -144,7 +145,7 @@ public class LegendConfigurationPanel extends AbstractConfigurationPanel {
 						private static final long serialVersionUID = 1L;
 
 						@Override
-						public void actionPerformed(ActionEvent e) {
+						public void loggedActionPerformed(ActionEvent e) {
 							createLegendFontColorDialog();
 						}
 
@@ -184,7 +185,7 @@ public class LegendConfigurationPanel extends AbstractConfigurationPanel {
 						private static final long serialVersionUID = 1L;
 
 						@Override
-						public void actionPerformed(ActionEvent e) {
+						public void loggedActionPerformed(ActionEvent e) {
 							createLegendBackgroundColorDialog();
 
 						}
@@ -224,7 +225,7 @@ public class LegendConfigurationPanel extends AbstractConfigurationPanel {
 						private static final long serialVersionUID = 1L;
 
 						@Override
-						public void actionPerformed(ActionEvent e) {
+						public void loggedActionPerformed(ActionEvent e) {
 							createLegendFrameColorDialog();
 
 						}
@@ -282,7 +283,8 @@ public class LegendConfigurationPanel extends AbstractConfigurationPanel {
 		// init legend font button
 		Font legendFont = getPlotConfiguration().getLegendConfiguration().getLegendFont();
 		if (legendFont != null) {
-			legendFontLabel.setFont(new Font(legendFont.getFamily(), legendFont.getStyle(), fontSize));
+			legendFontLabel
+					.setFont(FontTools.getFont(legendFont.getFamily(), legendFont.getStyle(), fontSize));
 		}
 
 		// init combo box selected item

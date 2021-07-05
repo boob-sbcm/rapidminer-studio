@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -27,14 +27,12 @@ import java.awt.Point;
 import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
-import java.awt.Toolkit;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-
 import javax.swing.BoxLayout;
 import javax.swing.ComboBoxEditor;
 import javax.swing.JButton;
@@ -57,7 +55,7 @@ import com.rapidminer.gui.look.RapidLookComboBoxEditor;
 import com.rapidminer.gui.look.RapidLookListCellRenderer;
 import com.rapidminer.gui.look.RapidLookTools;
 import com.rapidminer.gui.look.borders.Borders;
-import com.rapidminer.gui.tools.SwingTools;
+import com.rapidminer.gui.tools.MenuShortcutJList;
 
 
 /**
@@ -70,6 +68,8 @@ public class ComboBoxUI extends BasicComboBoxUI {
 	private class RapidLookComboPopup extends BasicComboPopup {
 
 		private static final long serialVersionUID = 1389744017891652801L;
+		/** as wide as our min resolution */
+		private static final int MAX_POPUP_WIDTH = 1280;
 
 		public RapidLookComboPopup(JComboBox<?> comboBox) {
 			super(comboBox);
@@ -97,20 +97,7 @@ public class ComboBoxUI extends BasicComboBoxUI {
 		@SuppressWarnings({ "unchecked", "rawtypes" })
 		@Override
 		protected JList<?> createList() {
-			return new JList(this.comboBox.getModel()) {
-
-				private static final long serialVersionUID = -2467344849011408539L;
-
-				@Override
-				public void processMouseEvent(MouseEvent e) {
-					if (SwingTools.isControlOrMetaDown(e)) {
-						e = new MouseEvent((Component) e.getSource(), e.getID(), e.getWhen(), e.getModifiers()
-								^ Toolkit.getDefaultToolkit().getMenuShortcutKeyMask(), e.getX(), e.getY(),
-								e.getClickCount(), e.isPopupTrigger());
-					}
-					super.processMouseEvent(e);
-				}
-			};
+			return new MenuShortcutJList(this.comboBox.getModel(), false);
 		}
 
 		@Override
@@ -143,6 +130,11 @@ public class ComboBoxUI extends BasicComboBoxUI {
 			setListSelection(this.comboBox.getSelectedIndex());
 			Point location = getPopupLocation();
 			show(this.comboBox, location.x, location.y - 3);
+		}
+
+		@Override
+		protected Rectangle computePopupBounds(int px, int py, int pw, int ph) {
+			return super.computePopupBounds(px, py, Math.min(MAX_POPUP_WIDTH, Math.max(comboBox.getPreferredSize().width, pw)), ph);
 		}
 
 		private void setListSelection(int selectedIndex) {

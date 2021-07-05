@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -25,11 +25,11 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
-
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
@@ -44,11 +44,12 @@ import com.rapidminer.gui.tools.ExtendedJScrollPane;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.ResourceDockKey;
 import com.rapidminer.gui.tools.components.DropDownPopupButton;
-import com.rapidminer.gui.tools.components.DropDownPopupButton.PopupMenuProvider;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.Entry;
-import com.rapidminer.repository.IOObjectEntry;
-import com.rapidminer.repository.ProcessEntry;
+import com.rapidminer.repository.Folder;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.gui.actions.NewRepositoryAction;
+import com.rapidminer.tools.Tools;
 import com.vlsolutions.swing.docking.DockKey;
 import com.vlsolutions.swing.docking.Dockable;
 
@@ -62,25 +63,24 @@ public class RepositoryBrowser extends JPanel implements Dockable {
 
 	private static final long serialVersionUID = 1L;
 
-	public static final Action ADD_REPOSITORY_ACTION = new ResourceAction(true, "add_repository") {
-
-		private static final long serialVersionUID = 1L;
-
-		@Override
-		public void actionPerformed(ActionEvent e) {
-			addRepository();
-		}
-	};
+	public static final Action ADD_REPOSITORY_ACTION = new NewRepositoryAction();
 
 	private static final Action SORT_REPOSITORY_ACTION = new ResourceAction(true, "repository_sort_submenu") {
 
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {}
+		public void loggedActionPerformed(ActionEvent e) {}
 	};
 
 	private final RepositoryTree tree;
+
+	/**
+	 * Tracking this {@link JPopupMenu} to be able to add items via {@link RepositoryBrowser#addMenuItem(JMenuItem)}
+	 *
+	 * @since 9.3
+	 */
+	private final JPopupMenu furtherActionsMenu = new JPopupMenu();
 
 	public RepositoryBrowser() {
 		this(null);
@@ -96,30 +96,27 @@ public class RepositoryBrowser extends JPanel implements Dockable {
 		if (dragListener != null) {
 			((AbstractPatchedTransferHandler) tree.getTransferHandler()).addDragListener(dragListener);
 		}
-		tree.addRepositorySelectionListener(new RepositorySelectionListener() {
+		tree.addRepositorySelectionListener(e -> {
 
-			@Override
-			public void repositoryLocationSelected(RepositorySelectionEvent e) {
-				Entry entry = e.getEntry();
-				if (entry instanceof ProcessEntry) {
-					RepositoryTree.openProcess((ProcessEntry) entry);
-				} else if (entry instanceof IOObjectEntry) {
-					OpenAction.showAsResult((IOObjectEntry) entry);
-				}
+			Entry entry = e.getEntry();
+
+			// skip folder double-clicks
+			if (!(entry instanceof Folder)) {
+				OpenAction.open((DataEntry) entry, true);
 			}
 		});
 
 		setLayout(new BorderLayout());
 
-		final JPopupMenu furtherActionsMenu = new JPopupMenu();
 		furtherActionsMenu.add(ADD_REPOSITORY_ACTION);
+		furtherActionsMenu.addSeparator();
 		furtherActionsMenu.add(tree.CREATE_FOLDER_ACTION);
+		furtherActionsMenu.add(tree.REFRESH_ACTION);
+		furtherActionsMenu.addSeparator();
 		final JMenu sortActionsMenu = new JMenu(SORT_REPOSITORY_ACTION);
 		sortActionsMenu.add(tree.SORT_BY_NAME_ACTION.createMenuItem());
 		sortActionsMenu.add(tree.SORT_BY_LAST_MODIFIED_DATE_ACTION.createMenuItem());
 		furtherActionsMenu.add(sortActionsMenu);
-
-		furtherActionsMenu.add(tree.REFRESH_ACTION);
 		furtherActionsMenu.add(tree.SHOW_PROCESS_IN_REPOSITORY_ACTION);
 
 		JPanel northPanel = new JPanel(new GridBagLayout());
@@ -136,14 +133,7 @@ public class RepositoryBrowser extends JPanel implements Dockable {
 		northPanel.add(addDataButton, c);
 
 		DropDownPopupButton furtherActionsButton = new DropDownPopupButton("gui.action.further_repository_actions",
-				new PopupMenuProvider() {
-
-					@Override
-					public JPopupMenu getPopupMenu() {
-						return furtherActionsMenu;
-					}
-
-				});
+				() -> furtherActionsMenu);
 		furtherActionsButton.setPreferredSize(new Dimension(50, 30));
 
 		c.gridx = 1;
@@ -155,10 +145,6 @@ public class RepositoryBrowser extends JPanel implements Dockable {
 		JScrollPane scrollPane = new ExtendedJScrollPane(tree);
 		scrollPane.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Colors.TEXTFIELD_BORDER));
 		add(scrollPane, BorderLayout.CENTER);
-	}
-
-	private static void addRepository() {
-		NewRepositoryDialog.createNew();
 	}
 
 	/**
@@ -189,9 +175,47 @@ public class RepositoryBrowser extends JPanel implements Dockable {
 	}
 
 	/**
-	 * @param storedRepositoryLocation
+	 * @param storedRepositoryLocation the repository location that should be displayed in the browser
 	 */
 	public void expandToRepositoryLocation(RepositoryLocation storedRepositoryLocation) {
 		tree.expandAndSelectIfExists(storedRepositoryLocation);
+	}
+
+	/**
+	 * Add a {@link JMenuItem} to the popup-button in the upper right corner of this RepositoryBrowser
+	 *
+	 * @param item
+	 * 		the {@link JMenuItem} to be added to this {@link RepositoryBrowser}
+	 * @since 9.3
+	 */
+	public void addMenuItem(JMenuItem item) {
+		furtherActionsMenu.add(item);
+	}
+
+	/**
+	 * Add a {@link JMenuItem} to the popup-button in the upper right corner of this RepositoryBrowser at the specified
+	 * index.
+	 * <p>
+	 * Internal API, do not call!
+	 * </p>
+	 *
+	 * @param item  the {@link JMenuItem} to be added to this {@link RepositoryBrowser}
+	 * @param index the index at which position it should be added
+	 * @since 9.7
+	 */
+	public void addMenuItemInternal(JMenuItem item, int index) {
+		Tools.requireInternalPermission();
+		furtherActionsMenu.add(item, index);
+	}
+
+	/**
+	 * Remove a {@link JMenuItem} from the popup-button in the upper right corner of this RepositoryBrowser
+	 *
+	 * @param item
+	 * 		the {@link JMenuItem} to be removed from this {@link RepositoryBrowser}
+	 * @since 9.3
+	 */
+	public void removeMenuItem(JMenuItem item) {
+		furtherActionsMenu.remove(item);
 	}
 }

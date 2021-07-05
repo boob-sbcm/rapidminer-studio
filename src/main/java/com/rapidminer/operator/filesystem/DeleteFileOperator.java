@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -59,7 +59,9 @@ public class DeleteFileOperator extends Operator {
 	public List<ParameterType> getParameterTypes() {
 		List<ParameterType> types = super.getParameterTypes();
 
-		types.add(new ParameterTypeFile(PARAMETER_FILE, "The file to delete.", "*", false, false));
+		ParameterType type = new ParameterTypeFile(PARAMETER_FILE, "The file to delete.", "*", false, false);
+		type.setPrimary(true);
+		types.add(type);
 		types.add(new ParameterTypeBoolean(PARAMETER_NO_FILE_ERROR,
 				"Determines whether an exception should be generated if the file is not found.", false, false));
 

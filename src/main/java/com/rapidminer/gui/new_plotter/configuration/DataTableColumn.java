@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -25,10 +25,11 @@ import com.rapidminer.tools.Ontology;
 /**
  * This class describes a column of a {@link DataTable} characterized by a name, a column index and
  * a {@link ValueType}.
- * 
+ *
  * @author Nils Woehler, Marius Helf
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class DataTableColumn implements Cloneable {
 
 	public enum ValueType {

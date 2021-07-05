@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -85,7 +85,10 @@ public class ProportionNormalizationModel extends AbstractNormalizationModel {
 	@Override
 	public double getValue(Attribute targetAttribute, double value) {
 		Double sum = attributeSums.get(targetAttribute.getName());
-		return (value / sum);
+		if (sum == null) {
+			return value;
+		}
+		return value / sum;
 	}
 
 	/**

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,7 +23,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
+import com.rapidminer.example.Attribute;
 import com.rapidminer.example.ExampleSet;
+import com.rapidminer.example.Tools;
 import com.rapidminer.example.set.SplittedExampleSet;
 import com.rapidminer.operator.Model;
 import com.rapidminer.operator.OperatorCapability;
@@ -115,14 +117,10 @@ public class ROCBasedComparisonOperator extends OperatorChain implements Capabil
 	public void doWork() throws OperatorException {
 		ExampleSet exampleSet = exampleSetInput.getData(ExampleSet.class);
 
-		if (exampleSet.getAttributes().getLabel() == null) {
-			throw new UserError(this, 105);
-		}
-		if (!exampleSet.getAttributes().getLabel().isNominal()) {
-			throw new UserError(this, 101, "ROC Comparison", exampleSet.getAttributes().getLabel());
-		}
-		if (exampleSet.getAttributes().getLabel().getMapping().getValues().size() != 2) {
-			throw new UserError(this, 114, "ROC Comparison", exampleSet.getAttributes().getLabel());
+		Tools.hasNominalLabels(exampleSet, getOperatorClassName());
+		Attribute label = exampleSet.getAttributes().getLabel();
+		if (label.getMapping().size() != 2) {
+			throw new UserError(this, 114, "ROC Comparison", label.getName());
 		}
 
 		Map<String, List<ROCData>> rocData = new HashMap<String, List<ROCData>>();
@@ -136,6 +134,11 @@ public class ROCBasedComparisonOperator extends OperatorChain implements Capabil
 					getParameterAsBoolean(RandomGenerator.PARAMETER_USE_LOCAL_RANDOM_SEED),
 					getParameterAsInt(RandomGenerator.PARAMETER_LOCAL_RANDOM_SEED),
 					getCompatibilityLevel().isAtMost(SplittedExampleSet.VERSION_SAMPLING_CHANGED));
+
+			// It is important to remove any predicted labels that are possibly part of the input example set
+			// before we start our own predictions. Otherwise these predicted labels might be removed
+			// (alongside our own) from the underlying example table, possibly leading to side effects
+			PredictionModel.removePredictedLabel(eSet, false, false);
 
 			// apply subprocess to generate all models
 			eSet.selectSingleSubset(0);
@@ -168,7 +171,10 @@ public class ROCBasedComparisonOperator extends OperatorChain implements Capabil
 					getParameterAsInt(RandomGenerator.PARAMETER_LOCAL_RANDOM_SEED),
 					getCompatibilityLevel().isAtMost(SplittedExampleSet.VERSION_SAMPLING_CHANGED));
 
-			PredictionModel.removePredictedLabel(eSet);
+			// It is important to remove any predicted labels that are possibly part of the input example set
+			// before we start our own predictions. Otherwise the original predicted labels might be removed
+			// (alongside our own) from the underlying example table, possibly leading to side effects
+			PredictionModel.removePredictedLabel(eSet, false, false);
 
 			for (int iteration = 0; iteration < numberOfFolds; iteration++) {
 				eSet.selectAllSubsetsBut(iteration);

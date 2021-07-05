@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,14 +23,15 @@ import java.util.logging.Level;
 
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.operator.UserData;
-import com.rapidminer.repository.Entry;
 import com.rapidminer.repository.Folder;
 import com.rapidminer.repository.ProcessEntry;
+import com.rapidminer.repository.Repository;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
 import com.rapidminer.repository.internal.remote.RemoteContentManager;
 import com.rapidminer.repository.internal.remote.RemoteProcessEntry;
 import com.rapidminer.repository.internal.remote.RemoteRepository;
+import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.PasswordInputCanceledException;
 import com.rapidminer.tools.ProgressListener;
@@ -48,8 +49,8 @@ public class RepositoryProcessLocation implements ProcessLocation {
 	/** A simple {@link UserData} object to pass {@link Boolean} values */
 	public static class SimpleBooleanUserData implements UserData<Object> {
 
-		private boolean value;
 
+		private boolean value;
 		public SimpleBooleanUserData(boolean value) {
 			this.value = value;
 		}
@@ -63,26 +64,28 @@ public class RepositoryProcessLocation implements ProcessLocation {
 			return value;
 		}
 
+
 	}
+
+	private static final String GENERIC_PROCESS_ICON = I18N.getGUILabel("getting_started.open_recent.icon");
 
 	private final RepositoryLocation repositoryLocation;
 
 	public RepositoryProcessLocation(RepositoryLocation location) {
 		super();
+		location.setExpectedDataEntryType(ProcessEntry.class);
 		this.repositoryLocation = location;
 	}
 
 	private ProcessEntry getEntry() throws IOException {
-		Entry entry;
+		ProcessEntry entry;
 		try {
-			entry = repositoryLocation.locateEntry();
+			entry = repositoryLocation.locateData();
 		} catch (RepositoryException e) {
 			throw new IOException("Cannot locate entry '" + repositoryLocation + "': " + e, e);
 		}
 		if (entry == null) {
 			throw new IOException("No such entry: " + repositoryLocation);
-		} else if (!(entry instanceof ProcessEntry)) {
-			throw new IOException("No process entry: " + repositoryLocation);
 		} else {
 			return (ProcessEntry) entry;
 		}
@@ -103,7 +106,12 @@ public class RepositoryProcessLocation implements ProcessLocation {
 			listener.setCompleted(60);
 		}
 		final String xml = getRawXML();
-		Process process = new Process(xml);
+		Process process;
+		try {
+			process = new Process(xml, repositoryLocation.getRepository().getEncryptionContext());
+		} catch (RepositoryException e) {
+			throw new IOException(e);
+		}
 		process.setProcessLocation(this);
 		if (listener != null) {
 			listener.setCompleted(80);
@@ -119,40 +127,38 @@ public class RepositoryProcessLocation implements ProcessLocation {
 	@Override
 	public void store(Process process, ProgressListener listener) throws IOException {
 		try {
-			Entry entry = repositoryLocation.locateEntry();
+			ProcessEntry entry = repositoryLocation.locateData();
+			Repository repository = repositoryLocation.getRepository();
 			if (entry == null) {
 				Folder folder = repositoryLocation.parent().createFoldersRecursively();
-				folder.createProcessEntry(repositoryLocation.getName(), process.getRootOperator().getXML(false));
+				folder.createProcessEntry(repositoryLocation.getName(), process.getRootOperator().getXML(false, repository.getEncryptionContext()));
 			} else {
-				if (entry instanceof ProcessEntry) {
-					boolean isReadOnly = repositoryLocation.getRepository().isReadOnly();
-					if (isReadOnly) {
-						SwingTools.showSimpleErrorMessage("save_to_read_only_repo", "", repositoryLocation.toString());
-					} else {
-						UserData<Object> updateRevisionOnSave = process.getRootOperator()
-								.getUserData(UPDATE_REVISION_ON_SAVE_KEY);
-						if (updateRevisionOnSave != null && ((SimpleBooleanUserData) updateRevisionOnSave).isSet()) {
-							if (entry instanceof RemoteProcessEntry) {
-								RemoteRepository repo = ((RemoteProcessEntry) entry).getRepository();
-								if (repo != null) {
-									try {
-										RemoteContentManager entryService = repo.getContentManager();
-										entryService.startNewRevision(entry.getLocation().getPath());
-										entry.getContainingFolder().refresh();
-										Entry newRevisionEntry = repo.locate(entry.getLocation().getPath());
-										((ProcessEntry) newRevisionEntry).storeXML(process.getRootOperator().getXML(false));
-										process.getRootOperator().setUserData(UPDATE_REVISION_ON_SAVE_KEY, null);
-									} catch (PasswordInputCanceledException e) {
-										// do nothing
-									}
-								}
+				boolean isReadOnly = repository.isReadOnly();
+				if (isReadOnly) {
+					SwingTools.showSimpleErrorMessage("save_to_read_only_repo", "", repositoryLocation.toString());
+					return;
+				}
+
+				UserData<Object> updateRevisionOnSave = process.getRootOperator().getUserData(UPDATE_REVISION_ON_SAVE_KEY);
+				if (updateRevisionOnSave != null && ((SimpleBooleanUserData) updateRevisionOnSave).isSet()) {
+					if (entry instanceof RemoteProcessEntry) {
+						RemoteRepository repo = ((RemoteProcessEntry) entry).getRepository();
+						if (repo != null) {
+							try {
+								RemoteContentManager entryService = repo.getContentManager();
+								entryService.startNewRevision(entry.getLocation().getPath());
+								entry.getContainingFolder().refresh();
+								ProcessEntry newRevisionEntry = repo.locateData(entry.getLocation().getPath(), ProcessEntry.class, true);
+								// no encryption for remote
+								newRevisionEntry.storeXML(process.getRootOperator().getXML(false, repository.getEncryptionContext()));
+								process.getRootOperator().setUserData(UPDATE_REVISION_ON_SAVE_KEY, null);
+							} catch (PasswordInputCanceledException e) {
+								// do nothing
 							}
-						} else {
-							((ProcessEntry) entry).storeXML(process.getRootOperator().getXML(false));
 						}
 					}
 				} else {
-					throw new RepositoryException("Entry " + repositoryLocation + " is not a process entry.");
+					entry.storeXML(process.getRootOperator().getXML(false, repository.getEncryptionContext()));
 				}
 			}
 			LogService.getRoot().log(Level.INFO, "com.rapidminer.RepositoryProcessLocation.saved_process_definition",
@@ -193,5 +199,15 @@ public class RepositoryProcessLocation implements ProcessLocation {
 	@Override
 	public String getShortName() {
 		return repositoryLocation.getName();
+	}
+
+	@Override
+	public String getIconName() {
+		try {
+			return getRepositoryLocation().getRepository().getIconName();
+		} catch (Exception e) {
+			// can happen if a repository was removed, do not log anything in those cases
+			return GENERIC_PROCESS_ICON;
+		}
 	}
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -47,7 +47,9 @@ import javax.swing.JPanel;
  * main options of plotting like axis selection or draw range selection.
  * 
  * @author Ingo Mierswa
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class SimplePlotterDialog extends JDialog implements MouseMotionListener, MouseListener {
 
 	private static final long serialVersionUID = 3024071214549165747L;
@@ -101,7 +103,7 @@ public class SimplePlotterDialog extends JDialog implements MouseMotionListener,
 				private static final long serialVersionUID = 1L;
 
 				@Override
-				public void actionPerformed(ActionEvent e) {
+				public void loggedActionPerformed(ActionEvent e) {
 					plotter.save();
 				}
 			});
@@ -112,7 +114,7 @@ public class SimplePlotterDialog extends JDialog implements MouseMotionListener,
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				ok();
 			}
 		});

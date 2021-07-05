@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -21,7 +21,6 @@ package com.rapidminer.example.set;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Attributes;
@@ -39,7 +38,7 @@ import com.rapidminer.tools.Tools;
  *
  * @author Simon Fischer, Ingo Mierswa, Felix Jungermann
  */
-public class SplittedExampleSet extends AbstractExampleSet {
+public class SplittedExampleSet extends AbstractExampleSet implements MappingBasedExampleSet {
 
 	public static final OperatorVersion VERSION_SAMPLING_CHANGED = new OperatorVersion(5, 1, 2);
 
@@ -224,6 +223,26 @@ public class SplittedExampleSet extends AbstractExampleSet {
 	}
 
 	@Override
+	public Object getUserData(String key) {
+		return parent.getUserData(key);
+	}
+
+	@Override
+	public Object setUserData(String key, Object value) {
+		return parent.setUserData(key, value);
+	}
+
+	@Override
+	public Map<String, Object> getAllUserData() {
+		return parent.getAllUserData();
+	}
+
+	@Override
+	public void setAllUserData(Map<String, Object> userDataMap) {
+		parent.setAllUserData(userDataMap);
+	}
+
+	@Override
 	public int hashCode() {
 		return super.hashCode() ^ partition.hashCode();
 	}
@@ -248,30 +267,22 @@ public class SplittedExampleSet extends AbstractExampleSet {
 			case AUTOMATIC:
 			default:
 				Attribute label = exampleSet.getAttributes().getLabel();
-				if ((label != null) && (label.isNominal())) {
+				if (label != null && label.isNominal()) {
 					builder = new StratifiedPartitionBuilder(exampleSet, useLocalRandomSeed, seed);
 				} else {
-					if (autoSwitchToShuffled || samplingType == AUTOMATIC) {
-						if (label == null || !label.isNominal()) {
-							exampleSet
-									.getLog()
-									.logWarning(
+					if ((autoSwitchToShuffled || samplingType == AUTOMATIC) && (label == null || !label.isNominal())) {
+							exampleSet.getLog().logWarning(
 									"Example set has no nominal label: using shuffled partition instead of stratified partition");
 							return new ShuffledPartitionBuilder(useLocalRandomSeed, seed);
 						}
-					}
 
-					if (label == null) {
-						throw new UserError(null, 105);
-					}
-					if (!label.isNominal()) {
-						throw new UserError(null, 101, "stratified sampling", label.getName());
-					}
+					com.rapidminer.example.Tools.hasNominalLabels(exampleSet, "stratified sampling");
 					builder = new ShuffledPartitionBuilder(useLocalRandomSeed, seed);
 				}
 				break;
 		}
 		return builder;
+
 	}
 
 	/** Adds the given subset. */
@@ -368,15 +379,16 @@ public class SplittedExampleSet extends AbstractExampleSet {
 	public static SplittedExampleSet splitByAttribute(ExampleSet exampleSet, Attribute attribute) {
 		int[] elements = new int[exampleSet.size()];
 		int i = 0;
-		Map<Integer, Integer> indexMap = new HashMap<Integer, Integer>();
-		AtomicInteger currentIndex = new AtomicInteger(0);
+		Map<Integer, Integer> indexMap = new HashMap<>();
+		int currentIndex = 0;
 		for (Example example : exampleSet) {
 			int value = (int) example.getValue(attribute);
 			Integer indexObject = indexMap.get(value);
 			if (indexObject == null) {
-				indexMap.put(value, currentIndex.getAndIncrement());
+				indexMap.put(value, currentIndex);
+				currentIndex++;
 			}
-			int intValue = indexMap.get(value).intValue();
+			int intValue = indexMap.get(value);
 			elements[i++] = intValue;
 		}
 
@@ -412,5 +424,20 @@ public class SplittedExampleSet extends AbstractExampleSet {
 	@Override
 	public void cleanup() {
 		parent.cleanup();
+	}
+
+	@Override
+	public int[] getMappingCopy() {
+		return partition.getTableIndexMapCopy();
+	}
+
+	@Override
+	public boolean isParentSimpleOrMapped() {
+		return parent instanceof SimpleExampleSet || parent instanceof MappingBasedExampleSet;
+	}
+
+	@Override
+	public ExampleSet getParentClone() {
+		return (ExampleSet) parent.clone();
 	}
 }

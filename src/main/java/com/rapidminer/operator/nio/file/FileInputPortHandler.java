@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -26,7 +26,6 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 
-import com.rapidminer.operator.IOObject;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorException;
 import com.rapidminer.operator.ports.InputPort;
@@ -37,6 +36,7 @@ import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeFile;
 import com.rapidminer.parameter.PortProvider;
 import com.rapidminer.parameter.conditions.PortConnectedCondition;
+import com.rapidminer.tools.TempFileTools;
 import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.WebServiceTools;
 
@@ -84,7 +84,7 @@ public class FileInputPortHandler {
 	 * */
 	public File getSelectedFile() throws OperatorException {
 		if (!(fileInputPort.isConnected() || fileInputPort.getPorts().getOwner().getOperator().getProcess() == null
-				&& fileInputPort.getAnyDataOrNull() != null)) {
+				&& fileInputPort.getRawData() != null)) {
 			String fileParameter = operator.getParameterAsString(fileParameterName);
 			try {
 				URL url = new URL(fileParameter);
@@ -98,10 +98,11 @@ public class FileInputPortHandler {
 					return cachedFile;
 				} else {
 					try {
-						cachedFile = File.createTempFile("rm_file_", ".dump");
-						cachedFile.deleteOnExit();
-						FileOutputStream fos = new FileOutputStream(cachedFile);
-						Tools.copyStreamSynchronously(WebServiceTools.openStreamFromURL(url), fos, true);
+						cachedFile = TempFileTools.createTempFile("rm_file_", ".dump").toFile();
+						try (InputStream urlStream = WebServiceTools.openStreamFromURL(url);
+								FileOutputStream fos = new FileOutputStream(cachedFile)) {
+							Tools.copyStreamSynchronously(urlStream, fos, true);
+						}
 					} catch (IOException e) {
 						throw new OperatorException("Failed to access URL: " + url, e);
 					}
@@ -122,7 +123,7 @@ public class FileInputPortHandler {
 	 * */
 	public InputStream openSelectedFile() throws OperatorException, IOException {
 		if (!(fileInputPort.isConnected() || fileInputPort.getPorts().getOwner().getOperator().getProcess() == null
-				&& fileInputPort.getAnyDataOrNull() != null)) {
+				&& fileInputPort.getRawData() != null)) {
 			return new FileInputStream(getSelectedFile());
 		} else {
 			return fileInputPort.getData(FileObject.class).openStream();
@@ -135,11 +136,11 @@ public class FileInputPortHandler {
 	 * */
 	public boolean isFileSpecified() {
 		if (!(fileInputPort.isConnected() || fileInputPort.getPorts().getOwner().getOperator().getProcess() == null
-				&& fileInputPort.getAnyDataOrNull() != null)) {
+				&& fileInputPort.getRawData() != null)) {
 			return operator.isParameterSet(fileParameterName);
 		} else {
 			try {
-				return fileInputPort.getData(IOObject.class) != null;
+				return fileInputPort.getDataOrNull(FileObject.class) != null;
 			} catch (OperatorException e) {
 				return false;
 			}

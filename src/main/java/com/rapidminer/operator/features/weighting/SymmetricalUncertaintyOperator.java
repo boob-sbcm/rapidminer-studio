@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -24,6 +24,7 @@ import com.rapidminer.example.Attribute;
 import com.rapidminer.example.AttributeWeights;
 import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleSet;
+import com.rapidminer.example.Tools;
 import com.rapidminer.operator.OperatorCapability;
 import com.rapidminer.operator.OperatorCreationException;
 import com.rapidminer.operator.OperatorDescription;
@@ -56,10 +57,8 @@ public class SymmetricalUncertaintyOperator extends AbstractWeighting {
 
 	@Override
 	protected AttributeWeights calculateWeights(ExampleSet exampleSet) throws OperatorException {
+		Tools.hasNominalLabels(exampleSet, getOperatorClassName());
 		Attribute label = exampleSet.getAttributes().getLabel();
-		if (!label.isNominal()) {
-			throw new UserError(this, 101, "symmetrical uncertainty", label.getName());
-		}
 
 		// discretize numerical data
 		BinDiscretization discretization = null;

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,19 @@
 */
 package com.rapidminer.operator.io;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.nio.charset.Charset;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.zip.GZIPOutputStream;
+
 import com.rapidminer.example.Example;
 import com.rapidminer.example.ExampleFormatter;
 import com.rapidminer.example.ExampleSet;
@@ -33,19 +46,6 @@ import com.rapidminer.parameter.ParameterTypeFile;
 import com.rapidminer.parameter.ParameterTypeInt;
 import com.rapidminer.parameter.ParameterTypeString;
 import com.rapidminer.tools.io.Encoding;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.nio.charset.Charset;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.logging.Level;
-import java.util.zip.GZIPOutputStream;
 
 
 /**
@@ -167,17 +167,12 @@ public class SpecialFormatExampleSetWriter extends AppendingExampleSetWriter {
 		} catch (FormatterException e) {
 			throw new UserError(this, 901, format, e.getMessage());
 		}
-
 		OutputStream out = null;
-		PrintWriter writer = null;
-		try {
-			if (zipped) {
-				out = new GZIPOutputStream(new FileOutputStream(dataFile, append));
-			} else {
-				out = new FileOutputStream(dataFile, append);
-			}
-
-			writer = new PrintWriter(new OutputStreamWriter(out, encoding));
+		try (OutputStream outStream = new FileOutputStream(dataFile, append);
+				OutputStream zippedStream = zipped ? new GZIPOutputStream(outStream) : null;
+				OutputStreamWriter osw = new OutputStreamWriter(zipped ? zippedStream : outStream, encoding);
+				PrintWriter writer = new PrintWriter(osw)) {
+			out = outStream;
 			Iterator<Example> reader = exampleSet.iterator();
 			while (reader.hasNext()) {
 				if (automaticLineBreak) {
@@ -189,10 +184,6 @@ public class SpecialFormatExampleSetWriter extends AppendingExampleSetWriter {
 		} catch (IOException e) {
 			throw new UserError(this, 303, dataFile, e.getMessage());
 		} finally {
-			if (writer != null) {
-				writer.flush();
-				writer.close();
-			}
 			if (out != null) {
 				try {
 					out.close();
@@ -205,8 +196,10 @@ public class SpecialFormatExampleSetWriter extends AppendingExampleSetWriter {
 
 	@Override
 	public List<ParameterType> getParameterTypes() {
-		List<ParameterType> types = new LinkedList<ParameterType>();
-		types.add(new ParameterTypeFile(PARAMETER_EXAMPLE_SET_FILE, "File to save the example set to.", "dat", false));
+		List<ParameterType> types = new LinkedList<>();
+		ParameterType type = new ParameterTypeFile(PARAMETER_EXAMPLE_SET_FILE, "File to save the example set to.", "dat", false);
+		type.setPrimary(true);
+		types.add(type);
 		types.add(new ParameterTypeString(PARAMETER_SPECIAL_FORMAT, "Format string to use for output.", false));
 		types.add(new ParameterTypeInt(PARAMETER_FRACTION_DIGITS,
 				"The number of fraction digits in the output file (-1: all possible digits).", -1, Integer.MAX_VALUE, -1));

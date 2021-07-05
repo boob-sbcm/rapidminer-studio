@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -23,9 +23,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -50,19 +54,21 @@ public final class PlatformUtilities {
 	private static final String RAPIDMINER_STUDIO_LAUNCHER_JAR = "rapidminer-studio-launcher.jar";
 
 	/**
-	 * The name of the RapidMiner Studio Commons development folder
-	 */
-	private static final String RAPIDMINER_STUDIO_COMMONS = "rapidminer-studio-commons";
-
-	/**
 	 * A regular expression that matches any version of the RapidMiner Studio Core Jar
 	 */
 	private static final String RAPIDMINER_STUDIO_CORE_REGEX = ".+rapidminer-studio-core-\\d.*\\.jar";
 
 	/**
-	 * The name of the RapidMiner Studio Core development folder
+	 * Elements potentially added to the library path by build tools.
 	 */
-	private static final String RAPIDMINER_STUDIO_CORE = "rapidminer-studio-core";
+	private static final Set<String> BUILD_PATH_ELEMENTS  = new HashSet<>(4);
+	static {
+		BUILD_PATH_ELEMENTS.add("build");
+		BUILD_PATH_ELEMENTS.add("out");
+		BUILD_PATH_ELEMENTS.add("classes");
+		BUILD_PATH_ELEMENTS.add("rapidminer-studio-core");
+		BUILD_PATH_ELEMENTS.add("rapidminer-studio-commons");
+	}
 
 	/**
 	 * The suffix of a path from where the tests are started via Gradle.<br/>
@@ -347,6 +353,14 @@ public final class PlatformUtilities {
 		if (url == null) {
 			logSevere("Failed to locate 'rapidminer.home'. Could not locate base directory of classes!");
 		} else {
+			try {
+				url = URLDecoder.decode(url, StandardCharsets.UTF_8.name());
+			} catch (UnsupportedEncodingException e) {
+				// should not happen
+				e.printStackTrace();
+				logSevere("Failed to decode url! Path could be wrong: " + url);
+			}
+			
 			// Use parent file, not the JAR itself
 			File buildDir = new File(url).getParentFile();
 			logInfo("Trying base directory of classes (build) '" + buildDir + "' ...");
@@ -395,16 +409,14 @@ public final class PlatformUtilities {
 			// Otherwise assume that the search was started via IDE or from productive environment
 			// and use the library directory parent
 			projectDir = buildDir.getParentFile();
+
 		}
 
-		// Check if we are in a development or test environment (i.e. in the subproject
-		// 'rapidminer-studio-core' or 'rapidminer-studio-commons').
-		if (projectDir.getAbsolutePath().endsWith(RAPIDMINER_STUDIO_CORE)
-				|| projectDir.getAbsolutePath().endsWith(RAPIDMINER_STUDIO_COMMONS)) {
-			logInfo("Build dir located in 'rapidminer-studio-core' or 'rapidminer-studio-commons' folder. "
-					+ "Assuming development or testing build...");
-			return projectDir.getParentFile();
+		// Check if we are in a development or test environment
+		while (projectDir != null && BUILD_PATH_ELEMENTS.contains(projectDir.getName())) {
+			projectDir = projectDir.getParentFile();
 		}
+
 		return projectDir;
 	}
 

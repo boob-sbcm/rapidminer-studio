@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,6 +18,13 @@
 */
 package com.rapidminer.gui.new_plotter.utility;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Collection;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.regex.Pattern;
+
 import com.rapidminer.Process;
 import com.rapidminer.example.ExampleSet;
 import com.rapidminer.operator.IOContainer;
@@ -29,20 +36,14 @@ import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.XMLException;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Collection;
-import java.util.List;
-import java.util.logging.Level;
-import java.util.regex.Pattern;
-
 
 /**
  * This is a utility class which can transform {@link ExampleSet}s for various needs.
  * 
  * @author Marco Boeck
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public class DataTransformation {
 
 	private static final String TO_REPLACE_WITH_DEPIVOT_ATTRIBUTE_LIST = "TO_REPLACE_WITH_DEPIVOT_ATTRIBUTE_LIST";
@@ -134,7 +135,7 @@ public class DataTransformation {
 			String numericalValuesString;
 			numericalValuesString = defaultValueBuffer.substring(0, defaultValueBuffer.length() - 1);
 			transformProcessXML = transformProcessXML.replace(TO_REPLACE_WITH_DEPIVOT_ATTRIBUTE_LIST, numericalValuesString);
-			Process transformProcess = new Process(transformProcessXML);
+			Process transformProcess = new Process(transformProcessXML, Process.NO_ENCRYPTION);
 
 			// disable logging messages
 			ParameterTypeCategory loggingParameterType = (ParameterTypeCategory) transformProcess.getOperator("Process")

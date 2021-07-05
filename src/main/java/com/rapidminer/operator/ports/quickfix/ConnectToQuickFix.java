@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -31,8 +31,8 @@ public class ConnectToQuickFix extends AbstractQuickFix {
 	private OutputPort outputPort;
 
 	public ConnectToQuickFix(InputPort inputPort, OutputPort outputPort) {
-		super(MAX_RATING, false, inputPort.isConnected() ? "reconnect_to" : "connect_to", new Object[] { outputPort
-				.getSpec() });
+		super(MAX_RATING, false, inputPort.isConnected() ? "reconnect_to" : "connect_to", outputPort
+				.getSpec());
 		this.inputPort = inputPort;
 		this.outputPort = outputPort;
 	}
@@ -40,7 +40,7 @@ public class ConnectToQuickFix extends AbstractQuickFix {
 	@Override
 	public void apply() {
 		if (inputPort.isConnected()) {
-			inputPort.getSource().disconnect();
+			inputPort.disconnect();
 		}
 		outputPort.connectTo(inputPort);
 	}

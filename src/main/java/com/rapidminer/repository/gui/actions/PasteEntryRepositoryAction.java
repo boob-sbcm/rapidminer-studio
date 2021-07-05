@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -36,12 +36,12 @@ public class PasteEntryRepositoryAction extends AbstractRepositoryAction<Entry> 
 	private static final long serialVersionUID = 1L;
 
 	public PasteEntryRepositoryAction(RepositoryTree tree) {
-		super(tree, Entry.class, false, "repository_paste");
+		super(tree, Entry.class, true, "repository_paste");
 		putValue(ACTION_COMMAND_KEY, "paste");
 	}
 
 	@Override
-	public void actionPerformed(ActionEvent e) {
+	public void loggedActionPerformed(ActionEvent e) {
 		String action = e.getActionCommand();
 		Action a = tree.getActionMap().get(action);
 		if (a != null) {

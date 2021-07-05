@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -28,7 +28,10 @@ import com.rapidminer.repository.RepositoryLocation;
  * Container class for handling of multiple {@link RepositoryLocation}s
  *
  * @author Adrian Wilke
+ * @deprecated since 8.1.2
+ * @see TransferableRepositoryEntry
  */
+@Deprecated
 public class RepositoryLocationList {
 
 	private List<RepositoryLocation> repositoryLocations = new LinkedList<>();

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -22,10 +22,11 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+
+import org.apache.commons.lang.ArrayUtils;
 
 import com.rapidminer.example.Attribute;
 import com.rapidminer.example.Example;
@@ -33,8 +34,8 @@ import com.rapidminer.example.ExampleSet;
 import com.rapidminer.example.table.AttributeFactory;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
+import com.rapidminer.operator.OperatorVersion;
 import com.rapidminer.operator.ProcessSetupError.Severity;
-import com.rapidminer.operator.SimpleProcessSetupError;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.operator.annotation.ResourceConsumptionEstimator;
 import com.rapidminer.operator.error.AttributeNotFoundError;
@@ -44,7 +45,6 @@ import com.rapidminer.operator.ports.metadata.ExampleSetMetaData;
 import com.rapidminer.operator.ports.metadata.MetaData;
 import com.rapidminer.operator.ports.metadata.SetRelation;
 import com.rapidminer.operator.ports.metadata.SimpleMetaDataError;
-import com.rapidminer.operator.ports.quickfix.ParameterSettingQuickFix;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeAttribute;
 import com.rapidminer.parameter.ParameterTypeBoolean;
@@ -179,13 +179,19 @@ import com.rapidminer.tools.math.container.Range;
  */
 public class Nominal2Date extends AbstractDateDataProcessing {
 
+	private static final OperatorVersion BEFORE_TIME_READ_FIX = new OperatorVersion(9, 5, 1);
+
 	private static final String ATTRIBUTE_NAME_POSTFIX = "_old";
 
 	public static final String PARAMETER_ATTRIBUTE_NAME = "attribute_name";
 
 	public static final String PARAMETER_DATE_TYPE = "date_type";
 
-	public static final String PARAMETER_DATE_FORMAT = "date_format";
+	/**
+	 * @deprecated since 8.2; use {@link ParameterTypeDateFormat#PARAMETER_DATE_FORMAT} instead.
+	 */
+	@Deprecated
+	public static final String PARAMETER_DATE_FORMAT = ParameterTypeDateFormat.PARAMETER_DATE_FORMAT;
 
 	public static final String PARAMETER_TIME_ZONE = "time_zone";
 
@@ -211,18 +217,15 @@ public class Nominal2Date extends AbstractDateDataProcessing {
 	protected MetaData modifyMetaData(ExampleSetMetaData metaData) throws UndefinedParameterError {
 		// testing the date format
 		DateFormat format = null;
+		int localeIndex = getParameterAsInt(PARAMETER_LOCALE);
+		Locale selectedLocale = Locale.US;
+		if (localeIndex >= 0 && localeIndex < availableLocales.size()) {
+			selectedLocale = availableLocales.get(getParameterAsInt(PARAMETER_LOCALE));
+		}
 		try {
-			String dateFormat = getParameterAsString(PARAMETER_DATE_FORMAT);
-			int localeIndex = getParameterAsInt(PARAMETER_LOCALE);
-			Locale selectedLocale = Locale.US;
-			if (localeIndex >= 0 && localeIndex < availableLocales.size()) {
-				selectedLocale = availableLocales.get(getParameterAsInt(PARAMETER_LOCALE));
-			}
-			format = new SimpleDateFormat(dateFormat, selectedLocale);
-		} catch (IllegalArgumentException e) {
-			addError(new SimpleProcessSetupError(Severity.ERROR, getPortOwner(),
-					Collections.singletonList(new ParameterSettingQuickFix(this, PARAMETER_DATE_FORMAT)),
-					"parameter_invalid_time_format", PARAMETER_DATE_FORMAT));
+			format = ParameterTypeDateFormat.createCheckedDateFormat(this, selectedLocale, true);
+		} catch (UserError userError) {
+			// will not happen because of setup error
 		}
 		// attribute: change type
 		AttributeMetaData amd = metaData.getAttributeByName(getParameterAsString(PARAMETER_ATTRIBUTE_NAME));
@@ -287,7 +290,7 @@ public class Nominal2Date extends AbstractDateDataProcessing {
 			throw new AttributeNotFoundError(this, PARAMETER_ATTRIBUTE_NAME, attributeName);
 		}
 
-		String dateFormat = getParameterAsString(PARAMETER_DATE_FORMAT);
+		String dateFormat = getParameterAsString(ParameterTypeDateFormat.PARAMETER_DATE_FORMAT);
 		int dateType = getParameterAsInt(PARAMETER_DATE_TYPE);
 		int localeIndex = getParameterAsInt(PARAMETER_LOCALE);
 		Locale selectedLocale = Locale.US;
@@ -307,14 +310,15 @@ public class Nominal2Date extends AbstractDateDataProcessing {
 		exampleSet.getExampleTable().addAttribute(newAttribute);
 		exampleSet.getAttributes().addRegular(newAttribute);
 
-		SimpleDateFormat parser;
-		try {
-			parser = new SimpleDateFormat(dateFormat, selectedLocale);
-		} catch (IllegalArgumentException | NullPointerException e) {
-			throw new UserError(this, "invalid_date_format", dateFormat, e.getMessage());
+		// parser can not be null;  either the pattern specified is working or a UserError is thrown
+		SimpleDateFormat parser = ParameterTypeDateFormat.createCheckedDateFormat(this, selectedLocale, false);
+		parser.setTimeZone(Tools.getTimeZone(getParameterAsInt(PARAMETER_TIME_ZONE)));
+
+		int monthOffsetForTime = Calendar.FEBRUARY;
+		if (getCompatibilityLevel().isAbove(BEFORE_TIME_READ_FIX)) {
+			monthOffsetForTime = Calendar.JANUARY;
 		}
 
-		parser.setTimeZone(Tools.getTimeZone(getParameterAsInt(PARAMETER_TIME_ZONE)));
 
 		int row = 1;
 		for (Example e : exampleSet) {
@@ -332,7 +336,7 @@ public class Nominal2Date extends AbstractDateDataProcessing {
 				if (dateType == TIME) {
 					Calendar calendar = Calendar.getInstance();
 					calendar.setTime(date);
-					calendar.set(1970, 1, 1);
+					calendar.set(1970, monthOffsetForTime, 1);
 					e.setValue(newAttribute, calendar.getTimeInMillis());
 				} else {
 					e.setValue(newAttribute, date.getTime());
@@ -363,11 +367,7 @@ public class Nominal2Date extends AbstractDateDataProcessing {
 		type.setExpert(false);
 		types.add(type);
 
-		type = new ParameterTypeDateFormat(attributeParamType, PARAMETER_DATE_FORMAT,
-				"The parse format of the date values, for example \"yyyy/MM/dd\".", getExampleSetInputPort(), false);
-		type.setExpert(false);
-		type.setOptional(false);
-		types.add(type);
+		types.add(new ParameterTypeDateFormat(attributeParamType, getExampleSetInputPort()));
 
 		type = new ParameterTypeCategory(PARAMETER_TIME_ZONE,
 				"The time zone used for the date objects if not specified in the date string itself.",
@@ -393,5 +393,10 @@ public class Nominal2Date extends AbstractDateDataProcessing {
 	@Override
 	public ResourceConsumptionEstimator getResourceConsumptionEstimator() {
 		return OperatorResourceConsumptionHandler.getResourceConsumptionEstimator(getInputPort(), Nominal2Date.class, null);
+	}
+
+	@Override
+	public OperatorVersion[] getIncompatibleVersionChanges() {
+		return (OperatorVersion[]) ArrayUtils.add(super.getIncompatibleVersionChanges(), BEFORE_TIME_READ_FIX);
 	}
 }

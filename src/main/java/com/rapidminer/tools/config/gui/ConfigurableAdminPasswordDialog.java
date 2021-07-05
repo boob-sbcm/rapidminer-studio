@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -41,6 +41,7 @@ import com.rapidminer.repository.internal.remote.RemoteRepositoryFactoryRegistry
 import com.rapidminer.tools.I18N;
 import com.rapidminer.tools.config.ConfigurationManager;
 
+import static com.rapidminer.repository.internal.remote.RemoteRepository.AuthenticationType.BASIC;
 
 /**
  * Dialog asking for admin password of a given {@link RemoteRepository}.
@@ -127,7 +128,7 @@ public class ConfigurableAdminPasswordDialog extends ButtonDialog {
 			public void run() {
 				RemoteRepositoryFactory remoteRepositoryFactory = RemoteRepositoryFactoryRegistry.INSTANCE.get();
 				final String error = remoteRepositoryFactory != null
-		                ? remoteRepositoryFactory.checkConfiguration(sourceName, repositoryURL, getUserName(), getPassword())
+		                ? remoteRepositoryFactory.checkConfiguration(sourceName, repositoryURL, getUserName(), getPassword(), BASIC)
 		                : I18N.getGUILabel("error.configurable_dialog.remote_repo_factory_not_available");
 
 				SwingUtilities.invokeLater(new Runnable() {
@@ -165,7 +166,6 @@ public class ConfigurableAdminPasswordDialog extends ButtonDialog {
 		c.gridy += 1;
 		mainPanel.add(userLabel, c);
 		c.gridx += 1;
-		userField.setEditable(false);
 		userField.setMinimumSize(userField.getPreferredSize());
 		mainPanel.add(userField, c);
 		c.gridx += 1;

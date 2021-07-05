@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -21,6 +21,8 @@ package com.rapidminer.test_utils;
 import java.util.LinkedList;
 import java.util.List;
 
+import com.rapidminer.adaption.belt.IOTable;
+import com.rapidminer.example.ExampleSet;
 import com.rapidminer.test.asserter.AsserterFactory;
 
 
@@ -30,7 +32,7 @@ import com.rapidminer.test.asserter.AsserterFactory;
  */
 public class AsserterRegistry {
 
-	private List<Asserter> registeredAsserters = new LinkedList<Asserter>();
+	private List<Asserter> registeredAsserters = new LinkedList<>();
 
 	public void registerAsserter(Asserter asserter) {
 		registeredAsserters.add(asserter);
@@ -43,7 +45,7 @@ public class AsserterRegistry {
 	}
 
 	public List<Asserter> getAsserterForObject(Object object) {
-		List<Asserter> availableAsserters = new LinkedList<Asserter>();
+		List<Asserter> availableAsserters = new LinkedList<>();
 		for (Asserter asserter : registeredAsserters) {
 			if (asserter.getAssertable().isInstance(object)) {
 				availableAsserters.add(asserter);
@@ -56,11 +58,12 @@ public class AsserterRegistry {
 		}
 	}
 
+
 	public List<Asserter> getAsserterForObjects(Object o1, Object o2) {
-		List<Asserter> availableAsserters = new LinkedList<Asserter>();
+		List<Asserter> availableAsserters = new LinkedList<>();
 		for (Asserter asserter : registeredAsserters) {
 			Class<?> clazz = asserter.getAssertable();
-			if (clazz.isInstance(o1) && clazz.isInstance(o2)) {
+			if (clazz.isInstance(o1) && clazz.isInstance(o2) || exampleSetAndTable(clazz, o1, o2)) {
 				availableAsserters.add(asserter);
 			}
 		}
@@ -71,8 +74,18 @@ public class AsserterRegistry {
 		}
 	}
 
+	/**
+	 * Currently process test results are stored as {@link ExampleSet}s even if the result is an {@link IOTable}, so we
+	 * want to compare as {@link ExampleSet} in that case using a view.
+	 */
+	private boolean exampleSetAndTable(Class<?> clazz, Object o1, Object o2) {
+		return clazz.equals(ExampleSet.class) &&
+				((o1 instanceof ExampleSet && o2 instanceof IOTable)
+						|| (o2 instanceof ExampleSet && o1 instanceof IOTable));
+	}
+
 	public List<Asserter> getAsserterForClass(Class<?> clazz) {
-		List<Asserter> availableAsserters = new LinkedList<Asserter>();
+		List<Asserter> availableAsserters = new LinkedList<>();
 		for (Asserter asserter : registeredAsserters) {
 			if (asserter.getAssertable().isAssignableFrom(clazz)) {
 				availableAsserters.add(asserter);
@@ -84,4 +97,5 @@ public class AsserterRegistry {
 			return availableAsserters;
 		}
 	}
+
 }

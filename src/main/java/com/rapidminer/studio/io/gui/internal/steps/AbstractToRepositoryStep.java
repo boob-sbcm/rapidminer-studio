@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -27,17 +27,13 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.nio.file.Path;
 import java.util.concurrent.ExecutionException;
-
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
-import javax.swing.SwingWorker;
 import javax.swing.WindowConstants;
-import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import com.rapidminer.core.io.data.source.FileDataSource;
@@ -46,18 +42,21 @@ import com.rapidminer.core.io.gui.InvalidConfigurationException;
 import com.rapidminer.core.io.gui.WizardDirection;
 import com.rapidminer.core.io.gui.WizardStep;
 import com.rapidminer.gui.RapidMinerGUI;
+import com.rapidminer.gui.tools.MultiSwingWorker;
 import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.ProgressThreadDialog;
-import com.rapidminer.gui.tools.ProgressThreadListener;
 import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.SwingTools;
 import com.rapidminer.gui.tools.SwingTools.ResultRunnable;
 import com.rapidminer.gui.tools.dialogs.ConfirmDialog;
+import com.rapidminer.repository.DataEntry;
 import com.rapidminer.repository.Entry;
 import com.rapidminer.repository.Folder;
+import com.rapidminer.repository.IOObjectEntry;
 import com.rapidminer.repository.MalformedRepositoryLocationException;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
 import com.rapidminer.repository.gui.RepositoryLocationChooser;
 import com.rapidminer.repository.gui.RepositoryTree;
 import com.rapidminer.tools.I18N;
@@ -80,12 +79,12 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 	/**
 	 * SwingWorker which periodically checks if the background job finished.
 	 */
-	private class ProgressUpdater extends SwingWorker<Void, Void> {
+	private class ProgressUpdater extends MultiSwingWorker<Void, Void> {
 
 		private static final int IDLE_TIME_MS = 500;
 
 		@Override
-		protected Void doInBackground() throws Exception {
+		protected Void doInBackground() {
 			while (backgroundJob != null || confirmDialog != null) {
 				try {
 					// we've finished the background job, close the obsolete
@@ -107,13 +106,7 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 	private static final String CARD_ID_PROGRESS = "progress";
 
 	/** Change Listener which is registered to the {@link #chooser} */
-	private final ChangeListener changeListener = new ChangeListener() {
-
-		@Override
-		public void stateChanged(ChangeEvent e) {
-			AbstractToRepositoryStep.this.fireStateChanged();
-		}
-	};
+	private final ChangeListener changeListener = e -> AbstractToRepositoryStep.this.fireStateChanged();
 
 	/** {@link ResultRunnable} for the {@link #confirmDialog} */
 	private final ResultRunnable<Integer> confirmResultRunnable = new ResultRunnable<Integer>() {
@@ -132,11 +125,7 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 		@Override
 		public void windowClosing(WindowEvent event) {
 			if (backgroundJob != null) {
-				if (SwingTools.invokeAndWaitWithResult(confirmResultRunnable) != ConfirmDialog.YES_OPTION) {
-					closeDialog = false;
-				} else {
-					closeDialog = true;
-				}
+				closeDialog = SwingTools.invokeAndWaitWithResult(confirmResultRunnable) == ConfirmDialog.YES_OPTION;
 				confirmDialog = null;
 				if (closeDialog && backgroundJob != null) {
 					stopButton.doClick();
@@ -194,15 +183,23 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 		if (mainPanel == null) {
 			// If the user has selected a location in the repository browser, use it as initial
 			// location for the chooser.
-			String initalLocation = null;
+			String initialLocation = null;
 			RepositoryTree tree = RapidMinerGUI.getMainFrame().getRepositoryBrowser().getRepositoryTree();
 			Entry entry = tree.getSelectedEntry();
-			if (entry != null && !entry.isReadOnly()) {
-				initalLocation = entry.getLocation().getAbsoluteLocation();
+			if (entry == null) {
+				// nothing selected
+			} else if (entry instanceof Folder && ((Folder) entry).isSpecialConnectionsFolder()) {
+				// select repository if it's a connection
+				initialLocation = entry.getContainingFolder().getLocation().getAbsoluteLocation();
+			} else if (entry.getContainingFolder() != null && entry.getContainingFolder().isSpecialConnectionsFolder()) {
+				// select repository if it's a connection
+				initialLocation = entry.getContainingFolder().getContainingFolder().getLocation().getAbsoluteLocation();
+			} else if (!entry.isReadOnly()) {
+				initialLocation = entry.getLocation().getAbsoluteLocation();
 			}
 			// The validity of the step goes hand in hand with the state of the repository location
 			// chooser. Wrap respective events.
-			chooser = initializeChooser(initalLocation);
+			chooser = initializeChooser(initialLocation);
 			chooser.addChangeListener(changeListener);
 			mainPanel = new JPanel(new CardLayout());
 			mainPanel.add(getContentPanel(), CARD_ID_CHOOSER);
@@ -255,16 +252,20 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 		}
 
 		try {
-			final RepositoryLocation entryLocation = new RepositoryLocation(chooser.getRepositoryLocation());
+			final RepositoryLocation entryLocation = new RepositoryLocationBuilder().withExpectedDataEntryType(getDataEntryClass()).buildFromAbsoluteLocation(chooser.getRepositoryLocation());
 			final RepositoryLocation folderLocation = entryLocation.parent();
-			final Entry entry = folderLocation.locateEntry();
-			if (entry == null || !(entry instanceof Folder)) {
+			final Folder parent = folderLocation.locateFolder();
+			if (parent == null) {
 				fireStateChanged();
 				throw new InvalidConfigurationException();
 			}
 
-			final Folder parent = (Folder) entry;
-			final Entry oldEntry = entryLocation.locateEntry();
+			final DataEntry oldEntry = entryLocation.locateData();
+
+			if (parent.isSpecialConnectionsFolder()) {
+				fireStateChanged();
+				throw new InvalidConfigurationException();
+			}
 
 			// Ask user whether to override existing file (if any).
 			if (oldEntry != null) {
@@ -283,8 +284,8 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 						oldEntry.delete();
 						retryDelete = false;
 					} catch (RepositoryException e) {
-						if (SwingTools.showConfirmDialog(wizard.getDialog(), "error_in_delete_entry",
-								ConfirmDialog.YES_NO_OPTION) == ConfirmDialog.NO_OPTION) {
+						if (SwingTools.showConfirmDialog(wizard.getDialog(), "error_in_delete_entry_with_cause",
+								ConfirmDialog.YES_NO_OPTION, oldEntry.getName(), e.getMessage()) == ConfirmDialog.NO_OPTION) {
 							fireStateChanged();
 							chooser.addChangeListener(changeListener);
 							throw new InvalidConfigurationException();
@@ -297,30 +298,19 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 			closeDialog = false;
 			isImportCancelled = false;
 			backgroundJob = getImportThread(entryLocation, parent);
-			SwingUtilities.invokeLater(new Runnable() {
-
-				@Override
-				public void run() {
-					askBeforeClosing(true);
-					animationLabel.setText(String.format(IMPORTING_TEXT_TEMPLATE, entryLocation));
-					stopButton.setEnabled(true);
-					showCard(CARD_ID_PROGRESS);
-					// this call ensures that the progress bar runs smoothly
-					ProgressThreadDialog.getInstance().setVisible(true, false);
-				}
+			SwingTools.invokeLater(() -> {
+				askBeforeClosing(true);
+				animationLabel.setText(String.format(IMPORTING_TEXT_TEMPLATE, entryLocation));
+				stopButton.setEnabled(true);
+				showCard(CARD_ID_PROGRESS);
+				// this call ensures that the progress bar runs smoothly
+				ProgressThreadDialog.getInstance().setVisible(true, false);
 			});
 
 			// Import data with background worker.
-			backgroundJob.addProgressThreadListener(new ProgressThreadListener() {
-
-				@Override
-				public void threadFinished(ProgressThread thread) {
-					backgroundJob = null;
-
-				}
-			});
-			SwingWorker<Void, Void> progressUpdater = new ProgressUpdater();
-			progressUpdater.execute();
+			backgroundJob.addProgressThreadListener(thread -> backgroundJob = null);
+			MultiSwingWorker<Void, Void> progressUpdater = new ProgressUpdater();
+			progressUpdater.start();
 			backgroundJob.start();
 			try {
 				// this call will block the EDT and will continue as soon as
@@ -353,19 +343,15 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 	 *            behavior of the dialog will be used.
 	 */
 	private void askBeforeClosing(final boolean askBeforeClosing) {
-		SwingTools.invokeLater(new Runnable() {
-
-			@Override
-			public void run() {
-				JDialog dialog = wizard.getDialog();
-				if (dialog != null) {
-					if (askBeforeClosing) {
-						dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-						dialog.addWindowListener(closeListener);
-					} else {
-						dialog.setDefaultCloseOperation(defaultCloseOperation);
-						dialog.removeWindowListener(closeListener);
-					}
+		SwingTools.invokeLater(() -> {
+			JDialog dialog = wizard.getDialog();
+			if (dialog != null) {
+				if (askBeforeClosing) {
+					dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+					dialog.addWindowListener(closeListener);
+				} else {
+					dialog.setDefaultCloseOperation(defaultCloseOperation);
+					dialog.removeWindowListener(closeListener);
 				}
 			}
 		});
@@ -421,19 +407,24 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 			throws InvalidConfigurationException;
 
 	/**
+	 * The {@link DataEntry} (sub-)class that is being imported here. Necessary for overwrite detection. Defaults to
+	 * {@link IOObjectEntry}.
+	 *
+	 * @return the class, never {@code null}
+	 * @since 9.7
+	 */
+	protected Class<? extends DataEntry> getDataEntryClass() {
+		return IOObjectEntry.class;
+	}
+
+	/**
 	 * Shows the card specified by id, e.g. {@link #CARD_ID_CHOOSER} or {@link #CARD_ID_PROGRESS}.
 	 *
 	 * @param cardId
 	 *            the id of the card
 	 */
 	private void showCard(final String cardId) {
-		SwingTools.invokeLater(new Runnable() {
-
-			@Override
-			public void run() {
-				((CardLayout) mainPanel.getLayout()).show(mainPanel, cardId);
-			}
-		});
+		SwingTools.invokeLater(() -> ((CardLayout) mainPanel.getLayout()).show(mainPanel, cardId));
 	}
 
 	/**
@@ -466,7 +457,7 @@ public abstract class AbstractToRepositoryStep<T extends RepositoryLocationChoos
 					private static final long serialVersionUID = 1L;
 
 					@Override
-					public void actionPerformed(ActionEvent e) {
+					public void loggedActionPerformed(ActionEvent e) {
 						if (backgroundJob != null) {
 							setEnabled(false);
 							backgroundJob.cancel();

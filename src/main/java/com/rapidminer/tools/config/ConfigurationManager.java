@@ -1,24 +1,50 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
 */
 package com.rapidminer.tools.config;
 
-import java.net.HttpURLConnection;
+import com.rapidminer.io.process.XMLTools;
+import com.rapidminer.parameter.ParameterHandler;
+import com.rapidminer.parameter.ParameterType;
+import com.rapidminer.parameter.SimpleListBasedParameterHandler;
+import com.rapidminer.repository.ConnectionListener;
+import com.rapidminer.repository.ConnectionRepository;
+import com.rapidminer.repository.Folder;
+import com.rapidminer.repository.Repository;
+import com.rapidminer.repository.RepositoryAccessor;
+import com.rapidminer.repository.RepositoryException;
+import com.rapidminer.repository.RepositoryListener;
+import com.rapidminer.repository.RepositoryManager;
+import com.rapidminer.repository.RepositoryManagerListener;
+import com.rapidminer.repository.internal.remote.RemoteRepository;
+import com.rapidminer.repository.internal.remote.ResponseContainer;
+import com.rapidminer.tools.I18N;
+import com.rapidminer.tools.LogService;
+import com.rapidminer.tools.Observable;
+import com.rapidminer.tools.Observer;
+import com.rapidminer.tools.config.gui.event.ConfigurableEvent;
+import com.rapidminer.tools.config.gui.event.ConfigurableEvent.EventType;
+import com.rapidminer.tools.container.ComparablePair;
+import com.rapidminer.tools.container.Pair;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+
+import java.io.FileNotFoundException;
 import java.security.Key;
 import java.util.Collection;
 import java.util.Collections;
@@ -29,32 +55,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.WeakHashMap;
+import java.util.function.Predicate;
 import java.util.logging.Level;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-
-import com.rapidminer.io.process.XMLTools;
-import com.rapidminer.parameter.ParameterHandler;
-import com.rapidminer.parameter.ParameterType;
-import com.rapidminer.repository.Folder;
-import com.rapidminer.repository.Repository;
-import com.rapidminer.repository.RepositoryAccessor;
-import com.rapidminer.repository.RepositoryListener;
-import com.rapidminer.repository.RepositoryManager;
-import com.rapidminer.repository.internal.remote.ConnectionListener;
-import com.rapidminer.repository.internal.remote.RemoteRepository;
-import com.rapidminer.tools.I18N;
-import com.rapidminer.tools.LogService;
-import com.rapidminer.tools.Observable;
-import com.rapidminer.tools.Observer;
-import com.rapidminer.tools.WebServiceTools;
-import com.rapidminer.tools.config.gui.event.ConfigurableEvent;
-import com.rapidminer.tools.config.gui.event.ConfigurableEvent.EventType;
-import com.rapidminer.tools.container.ComparablePair;
-import com.rapidminer.tools.container.Pair;
+import java.util.stream.Collectors;
 
 
 /**
@@ -66,8 +73,54 @@ import com.rapidminer.tools.container.Pair;
 public abstract class ConfigurationManager implements Observable<Pair<EventType, Configurable>> {
 
 	/**
+	 * Check if Configurable is of a given type
+	 */
+	private static class ConfigurableByTypeFilter implements Predicate<Configurable> {
+
+		private String type;
+
+		public ConfigurableByTypeFilter(String type) {
+			this.type = type;
+		}
+
+		@Override
+		public boolean test(Configurable configurable) {
+			return Objects.equals(type, configurable.getTypeId());
+		}
+	}
+
+	/**
+	 * Checks if a Configurable is stored at a given source
+	 **/
+	private static class ConfigurableBySourceFilter implements Predicate<Configurable> {
+
+		private String source;
+
+		public ConfigurableBySourceFilter(String source) {
+			this.source = source;
+		}
+
+		@Override
+		public boolean test(Configurable configurable) {
+			String sourceName = configurable.getSource() == null ? null : configurable.getSource().getName();
+			return Objects.equals(source, sourceName);
+		}
+	}
+
+	/**
+	 * Check if the Configurable is accessible by the current user
+	 */
+	private Predicate<Configurable> isAccessible = configurable -> {
+		try {
+			checkAccess(configurable.getTypeId(), configurable.getName(), null);
+			return true;
+		} catch (ConfigurationException e) {
+			return false;
+		}
+	};
+
+	/**
 	 * Compares {@link Configurable}s.
-	 *
 	 */
 	public static class ConfigurableComparator implements Comparator<Configurable> {
 
@@ -90,6 +143,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 			}
 			return o1.getName().compareTo(o2.getName());
 		}
+
 	}
 
 	/**
@@ -97,7 +151,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 * {@link ConfigurationManager#createAndRegisterConfigurables(AbstractConfigurator, java.util.Map, java.util.Map, com.rapidminer.repository.internal.remote.RemoteRepository)}
 	 * for mocking a {@link ParameterHandler} when retrieving the list of parameters.
 	 */
-	private static final ParameterHandler EMPTY_PARAMETER_HANDLER = new ConfiguratorParameterHandler() {
+	private static final ParameterHandler EMPTY_PARAMETER_HANDLER = new SimpleListBasedParameterHandler() {
 
 		@Override
 		public List<ParameterType> getParameterTypes() {
@@ -107,13 +161,13 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	};
 
 	/**
-	 * URL from which configurations are loaded from RapidMiner Server via the ConfigurationServlet
+	 * URL from which configurations are loaded from RapidMiner AI Hub via the ConfigurationServlet
 	 * (includes trailing slash).
 	 */
 	public static final String RM_SERVER_CONFIGURATION_URL_PREFIX = "/api/rest/configuration/";
 
 	/**
-	 * User name of admin, used to check the access of a user to remote connections
+	 * User name of the default admin, used to check the access of a user to remote connections
 	 */
 	public static final String RM_SERVER_CONFIGURATION_USER_ADMIN = "admin";
 
@@ -122,21 +176,57 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 */
 	public static final String RM_SERVER_CONFIGURATION_SOURCE_NAME_LOCAL = "123%%%local%%%123";
 
+	/** @since 8.2.1 */
+	private static final String CONFIGURATION_TAG = "configuration";
+
 	/** singleton instance */
 	private static ConfigurationManager theInstance;
 
 	/** Map from {@link Configurator#getTypeId()} to {@link Configurator}. */
 	private Map<String, AbstractConfigurator<? extends Configurable>> configurators = new TreeMap<>();
 
-	/** Loads configurations provided by this repository whenever the repository is connected. */
-	private ConnectionListener loadOnConnectListener = new ConnectionListener() {
+	/** Loads configurations provided by this repository whenever the repository is connected
+	 * and removes them again when the repository is disconnected. */
+	private ConnectionListener updateOnConnectionStateListener = new ConnectionListener() {
 
 		@Override
-		public void connectionLost(RemoteRepository rmServer) {}
+		public void connectionLost(ConnectionRepository rmServer) {
+			if (rmServer instanceof  RemoteRepository) {
+				removeFromRepository((RemoteRepository) rmServer);
+			}
+		}
 
 		@Override
-		public void connectionEstablished(RemoteRepository rmServer) {
-			loadFromRepository(rmServer);
+		public void connectionEstablished(ConnectionRepository rmServer) {
+			if (rmServer instanceof  RemoteRepository) {
+				loadFromRepository((RemoteRepository) rmServer);
+			}
+		}
+	};
+
+	/**
+	 * Adds and removes listeners and configurables for {@link RemoteRepository RemoteRepositories}.
+	 *
+	 * @since 8.2.1
+	 */
+	private RepositoryManagerListener updateOnRepoManagerListener = new RepositoryManagerListener() {
+
+		@Override
+		public void repositoryWasAdded(Repository repository) {
+			if (repository instanceof  RemoteRepository) {
+				loadFromRepository((RemoteRepository) repository);
+				((RemoteRepository) repository).addConnectionListener(updateOnConnectionStateListener);
+				repository.addRepositoryListener(loadOnRefreshListener);
+			}
+		}
+
+		@Override
+		public void repositoryWasRemoved(Repository repository) {
+			if (repository instanceof  RemoteRepository) {
+				removeFromRepository((RemoteRepository) repository);
+				((RemoteRepository) repository).removeConnectionListener(updateOnConnectionStateListener);
+				repository.removeRepositoryListener(loadOnRefreshListener);
+			}
 		}
 	};
 
@@ -145,7 +235,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 
 		@Override
 		public void folderRefreshed(Folder folder) {
-			if (folder instanceof RemoteRepository) {
+			if (folder instanceof RemoteRepository && consumeRefreshRequest(((RemoteRepository) folder).getRepository())) {
 				loadFromRepository((RemoteRepository) folder);
 			}
 		}
@@ -165,6 +255,9 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 
 	/** mapping between configuration type ids and configurables */
 	private Map<String, Map<ComparablePair<String, String>, Configurable>> configurables = new HashMap<>();
+
+	/** stores refresh requests **/
+	private Map<RemoteRepository, Integer> refreshRequests = Collections.synchronizedMap(new WeakHashMap<>());
 
 	/** mapping configurables to permitted groups */
 	private static Map<String, Map<ComparablePair<String, String>, Set<String>>> permittedGroups = new HashMap<>();
@@ -229,10 +322,10 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 			throw new RuntimeException("typeID must not be null for " + configurator.getClass() + "!");
 		}
 		configurators.put(typeId, configurator);
-		configurables.put(typeId, new TreeMap<ComparablePair<String, String>, Configurable>());
+		configurables.put(typeId, new TreeMap<>());
 
 		if (permittedGroups.get(typeId) == null) {
-			permittedGroups.put(typeId, new TreeMap<ComparablePair<String, String>, Set<String>>());
+			permittedGroups.put(typeId, new TreeMap<>());
 		}
 
 	}
@@ -285,6 +378,22 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	}
 
 	/**
+	 * Refreshes the given repository
+	 *
+	 * @param source The repository that should be refreshed
+	 * @throws RepositoryException if the refresh failed
+	 */
+	public void refresh(RemoteRepository source) throws RepositoryException {
+		refreshRequests.merge(source, 1, Integer::sum);
+		try {
+			source.refresh();
+		} catch (RepositoryException e) {
+			refreshRequests.remove(source);
+			throw e;
+		}
+	}
+
+	/**
 	 * Returns all configurable names. Better to use
 	 * {@link #getAllConfigurableNamesAndSources(String)}.
 	 *
@@ -321,9 +430,9 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 
 	/**
 	 * Looks up a {@link Configurable} of the given name and type. If there are two configurables
-	 * with the same name and typeId, i.e. one located locally and one located on a RM Server, the
+	 * with the same name and typeId, i.e. one located locally and one located on a RapidMiner AI Hub, the
 	 * local one would be returned. The configurable is first searched in the local connections and
-	 * if there was no such configurable, it is searched in each existing RM Server.
+	 * if there was no such configurable, it is searched in each existing RapidMiner AI Hub.
 	 *
 	 * @param typeId
 	 *            must be one of {@link #getAllTypeIds()}
@@ -342,29 +451,14 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 		if (nameAndSourceToConfigurable == null) {
 			throw new ConfigurationException("No such configuration type: " + typeId);
 		}
-		Configurable result = null;
-		// check first for local connections with this name
-		for (Pair<String, String> key : nameAndSourceToConfigurable.keySet()) {
-			if (key.getSecond().equals(ConfigurationManager.RM_SERVER_CONFIGURATION_SOURCE_NAME_LOCAL)) {
-				if (key.getFirst().equals(name)) {
-					result = nameAndSourceToConfigurable.get(key);
-					break;
-				}
-			}
-		}
-		// if there is no local connection with this name, search for a remote connection with this
-		// name
-		if (result == null) {
-			for (Pair<String, String> key : nameAndSourceToConfigurable.keySet()) {
-				if (key.getFirst().equals(name)) {
-					result = nameAndSourceToConfigurable.get(key);
-					break;
-				}
-			}
-		}
+		// check first for local connections with this name; if there is no local connection with this name,
+		// search for a remote connection with this name
+		Configurable result = nameAndSourceToConfigurable.keySet().stream().filter(key -> key.getFirst().equals(name))
+				.min(Comparator.comparing(key -> !key.getSecond().equals(ConfigurationManager.RM_SERVER_CONFIGURATION_SOURCE_NAME_LOCAL)))
+				.map(nameAndSourceToConfigurable::get).orElse(null);
 		if (result == null) {
 			AbstractConfigurator<? extends Configurable> configurator = configurators.get(typeId);
-			throw new ConfigurationException("No such configured object of name " + name + " of " + configurator.getName());
+			throw new ConfigurationException("No such configured object of name " + name + " of " + (configurator != null ? configurator.getName() : "typeId: " + typeId));
 		}
 		return result;
 	}
@@ -430,19 +524,11 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 			return;
 		}
 		loadConfiguration();
-		RepositoryManager.getInstance(null).addObserver(new Observer<Repository>() {
-
-			@Override
-			public void update(Observable<Repository> observable, final Repository arg) {
-				if (arg instanceof RemoteRepository) {
-					loadFromRepository((RemoteRepository) arg);
-					((RemoteRepository) arg).addConnectionListener(loadOnConnectListener);
-					arg.addRepositoryListener(loadOnRefreshListener);
-				}
-			}
-		}, false);
-		for (RemoteRepository ra : RepositoryManager.getInstance(null).getRemoteRepositories()) {
-			ra.addConnectionListener(this.loadOnConnectListener);
+		// add listeners to already registered repositories as well as to all upcoming ones
+		RepositoryManager repositoryManager = RepositoryManager.getInstance(null);
+		repositoryManager.addRepositoryManagerListener(updateOnRepoManagerListener);
+		for (RemoteRepository ra : repositoryManager.getRemoteRepositories()) {
+			ra.addConnectionListener(this.updateOnConnectionStateListener);
 			ra.addRepositoryListener(this.loadOnRefreshListener);
 		}
 		initialized = true;
@@ -453,33 +539,8 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 
 		// load configuration typeIds from this repository
 		try {
-			HttpURLConnection connection = ra.getHTTPConnection(RM_SERVER_CONFIGURATION_URL_PREFIX, true);
-			WebServiceTools.setURLConnectionDefaults(connection);
-			if (connection.getResponseCode() == 404) {
-				LogService.getRoot().log(Level.WARNING,
-				        "com.rapidminer.tools.config.ConfigurationManager.loading_configuration_types_error",
-				        new Object[] { ra.getName() });
-			} else {
-				Document doc = XMLTools.parse(connection.getInputStream());
-
-				Element root = doc.getDocumentElement();
-				if (!"configuration".equals(root.getTagName())) {
-					throw new ConfigurationException("XML root tag must be <configuration>");
-				}
-
-				List<String> typeIds = new LinkedList<>();
-				for (Element elem : XMLTools.getChildElements(root)) {
-					if (elem.getTagName().equals("typeIds")) {
-
-						for (Element value : XMLTools.getChildElements(elem)) {
-							typeIds.add(value.getTextContent());
-						}
-						break;
-					}
-				}
-				ra.setTypeIds(typeIds);
-			}
-
+			List<String> typeIds = ra.getClient().loadConfigurationTypes();
+			ra.setTypeIds(typeIds);
 		} catch (Exception e) {
 			LogService.log(LogService.getRoot(), Level.WARNING, e,
 			        "com.rapidminer.tools.config.ConfigurationManager.loading_configuration_types_error", ra.getName(),
@@ -490,28 +551,32 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 		for (String typeId : getAllTypeIds()) {
 			AbstractConfigurator<?> configurator = getAbstractConfigurator(typeId);
 			try {
-				HttpURLConnection connection = ra.getHTTPConnection(RM_SERVER_CONFIGURATION_URL_PREFIX + typeId, true);
-				WebServiceTools.setURLConnectionDefaults(connection);
-				if (connection.getResponseCode() == 404) {
-					LogService.getRoot().log(Level.INFO,
-					        "com.rapidminer.tools.config.ConfigurationManager.loading_configuration.unknown",
-					        new Object[] { typeId, ra.getName() });
+				ResponseContainer response = ra.getClient().loadConfigurationType(typeId);
+
+				if (response.getResponseCode() == 404) {
+					LogService.getRoot().log(Level.FINE,
+							"com.rapidminer.tools.config.ConfigurationManager.loading_configuration.unknown",
+							new Object[]{typeId, ra.getName()});
 					continue;
 				}
-				Document doc = XMLTools.parse(connection.getInputStream());
+				Document doc = XMLTools.parse(response.getInputStream());
 				Map<Pair<Integer, String>, Map<String, String>> configurationParameters = fromXML(doc, configurator);
 				int counter = configurationParameters.size();
 				Map<Pair<Integer, String>, Set<String>> configurationPermittedGroups = permittedGroupsfromXML(doc,
-				        configurator);
+						configurator);
 
 				createAndRegisterConfigurables(configurator, configurationParameters, configurationPermittedGroups, ra);
-				LogService.getRoot().log(Level.INFO, "com.rapidminer.tools.config.ClientConfigurationManager.loaded_from_ra",
-				        new Object[] { ra.getName(), configurator.getName(), counter });
+				LogService.getRoot().log(Level.FINE, "com.rapidminer.tools.config.ClientConfigurationManager.loaded_from_ra",
+						new Object[]{ra.getName(), configurator.getName(), counter});
 
-			} catch (Exception e) {
-				LogService.log(LogService.getRoot(), Level.WARNING, e,
-				        "com.rapidminer.tools.config.ClientConfigurationManager.error_loading_from_ra", ra.getName(),
-				        configurator.getName(), e.toString());
+			} catch (FileNotFoundException fnfe) {
+				LogService.getRoot().log(Level.FINE,
+						"com.rapidminer.tools.config.ConfigurationManager.loading_configuration.unknown",
+						new Object[]{typeId, ra.getName()});
+			} catch (Throwable t) {
+				LogService.log(LogService.getRoot(), Level.WARNING, t,
+						"com.rapidminer.tools.config.ClientConfigurationManager.error_loading_from_ra", ra.getName(),
+						configurator.getName(), t.toString());
 			}
 		}
 
@@ -529,6 +594,59 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	}
 
 	/**
+	 * Removes all {@link Configurable Configurables} that were pulled from the given repository
+	 * from the {@link ConfigurationManager}.
+	 *
+	 * @param ra
+	 * 		the remote repository whose configurables should be removed
+	 * @since 8.2.1
+	 */
+	private static void removeFromRepository (RemoteRepository ra) {
+		ConfigurationManager instance = getInstance();
+		instance.getAllConfigurables().stream().filter(c -> c.getSource() == ra)
+				.forEach(c -> instance.removeConfigurable(c.getTypeId(), c.getName(), ra.getAlias()));
+	}
+
+	/**
+	 * Checks if {@code requestCount} can be initialized or decremented
+	 *
+	 * @param repository
+	 * 		The repository that should be refreshed (unused)
+	 * @param requestCount
+	 * 		The current refresh request count
+	 * @return 0 if {@code requestCount} is {@code null}, {@code requestCount}-1 if {@code requestCount} > 0
+	 * @throws IllegalArgumentException
+	 * 		if {@code requestCount} is <= 0
+	 */
+	private static Integer decrementOrInitializeRequestCount(final RemoteRepository repository, final Integer requestCount) {
+		if (requestCount == null) {
+			//Initial call
+			return 0;
+		} else if (requestCount <= 0) {
+			//Already loaded, no request
+			throw new IllegalArgumentException("requestCount should not be 0");
+		} else {
+			//Request exists, decrement
+			return requestCount - 1;
+		}
+	}
+
+	/**
+	 * Atomically decrements the request counter
+	 *
+	 * @param source
+	 * @return true if a refresh request exists for the source
+	 */
+	private boolean consumeRefreshRequest(RemoteRepository source) {
+		try {
+			refreshRequests.compute(source, ConfigurationManager::decrementOrInitializeRequestCount);
+		} catch (IllegalArgumentException e) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
 	 * Loads all configurations from the configuration database or file.
 	 * <p>
 	 * Note: In general there is no need to call this method, cause the {@link ConfigurationManager}
@@ -538,22 +656,26 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 */
 	public void loadConfiguration() {
 		for (AbstractConfigurator<? extends Configurable> configurator : configurators.values()) {
-			LogService.getRoot().log(Level.INFO, "com.rapidminer.tools.config.ConfigurationManager.loading_configuration",
-			        configurator.getName());
-			Map<Pair<Integer, String>, Map<String, String>> parameters;
 			try {
-				parameters = loadAllParameters(configurator);
-			} catch (ConfigurationException e1) {
-				LogService.getRoot().log(Level.WARNING,
-				        I18N.getMessage(LogService.getRoot().getResourceBundle(),
-				                "com.rapidminer.tools.config.ConfigurationManager.loading_configuration_error",
-				                configurator.getName(), e1),
-				        e1);
-				continue;
+				LogService.getRoot().log(Level.FINE, "com.rapidminer.tools.config.ConfigurationManager.loading_configuration",
+						configurator.getName());
+				Map<Pair<Integer, String>, Map<String, String>> parameters;
+				try {
+					parameters = loadAllParameters(configurator);
+				} catch (ConfigurationException e1) {
+					LogService.getRoot().log(Level.WARNING,
+							I18N.getMessage(LogService.getRoot().getResourceBundle(),
+									"com.rapidminer.tools.config.ConfigurationManager.loading_configuration_error",
+									configurator.getName(), e1),
+							e1);
+					continue;
+				}
+				createAndRegisterConfigurables(configurator, parameters, null, null);
+				LogService.getRoot().log(Level.FINE, "com.rapidminer.tools.config.ConfigurationManager.loaded_configurations",
+						new Object[]{configurables.get(configurator.getTypeId()).size(), configurator.getName()});
+			} catch (Throwable t) {
+				LogService.getRoot().log(Level.SEVERE, "Failed to load configurable " + configurator.getTypeId(), t);
 			}
-			createAndRegisterConfigurables(configurator, parameters, null, null);
-			LogService.getRoot().log(Level.INFO, "com.rapidminer.tools.config.ConfigurationManager.loaded_configurations",
-			        new Object[] { configurables.get(configurator.getTypeId()).size(), configurator.getName() });
 		}
 	}
 
@@ -696,7 +818,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 			permittedGroups.get(typeId).put(new ComparablePair<>(configurable.getName(), source), new HashSet<String>());
 		}
 
-		return permittedGroups.get(typeId).get(new ComparablePair<>(configurable.getName(), source));
+		return new HashSet<>(permittedGroups.get(typeId).get(new ComparablePair<>(configurable.getName(), source)));
 	}
 
 	/**
@@ -799,7 +921,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 */
 	public Document getConfigurablesAsXML(AbstractConfigurator<? extends Configurable> configurator, boolean onlyLocal) {
 		Document doc = XMLTools.createDocument();
-		Element root = doc.createElement("configuration");
+		Element root = doc.createElement(CONFIGURATION_TAG);
 		doc.appendChild(root);
 		for (Configurable configurable : configurables.get(configurator.getTypeId()).values()) {
 			try {
@@ -816,7 +938,8 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	}
 
 	/**
-	 * Returns the xml representation of the given configurables.
+	 * Returns the xml representation of the given configurables that match the given type,
+	 * are stored at the given source and are accessible by the current user.
 	 *
 	 * @param typeId
 	 *            the configurables of this typeId should be returned
@@ -828,27 +951,46 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 * @since 6.4.0
 	 */
 	public Document getConfigurablesAsXML(String typeId, List<Configurable> configurables, String source) {
+		return getConfigurablesAsXMLAndChangeEncryption(typeId, configurables, source, null, null);
+	}
+
+	/**
+	 * Returns the xml representation of the given configurables that match the given type,
+	 * are stored at the given source and are accessible by the current user,
+	 * by using the given old key to decrypt the information and the specified new key to encrypt the information.
+	 *
+	 * @param typeId
+	 *            the configurables of this typeId should be returned
+	 * @param configurables
+	 *            the configurables of one source
+	 * @param source
+	 *            the source of the given configurables, can be null (for local configurables)
+	 * @param decryptKey
+	 *            {@link Key} used to decrypt the configurable values
+	 * @param encryptKey
+	 *            {@link Key} which should be used to encrypt them in the returned xml
+	 * @return the configurables as XML document
+	 * @since 7.6.2
+	 */
+	public Document getConfigurablesAsXMLAndChangeEncryption(String typeId, List<Configurable> configurables, String source, Key decryptKey, Key encryptKey) {
 		Document doc = XMLTools.createDocument();
-		Element root = doc.createElement("configuration");
+		Element root = doc.createElement(CONFIGURATION_TAG);
 		doc.appendChild(root);
 		AbstractConfigurator<? extends Configurable> configurator = ConfigurationManager.getInstance()
 		        .getAbstractConfigurator(typeId);
-
-		for (Configurable configurable : configurables) {
-
-			boolean sameLocalSource = source == null && configurable.getSource() == null;
-			boolean sameRemoteSource = source != null && configurable.getSource() != null
-			        && configurable.getSource().getName().equals(source);
-			if (typeId.equals(configurable.getTypeId())) {
-				if (sameLocalSource || sameRemoteSource) {
-					try {
-						checkAccess(typeId, configurable.getName(), null);
-					} catch (ConfigurationException e) {
-						continue;
-					}
-					root.appendChild(toXML(doc, configurator, configurable));
-
-				}
+		//Filter results
+		Predicate<Configurable> byType = new ConfigurableByTypeFilter(typeId);
+		Predicate<Configurable> bySource = new ConfigurableBySourceFilter(source);
+		List<Configurable> filteredList = configurables.stream()
+				.filter(byType)
+				.filter(bySource)
+				.filter(isAccessible).collect(Collectors.toList());
+		for (Configurable configurable : filteredList) {
+			//This is used by the getConfigurablesAsXML without decryptKey & encryptKey
+			if (decryptKey == null && encryptKey == null) {
+				root.appendChild(toXML(doc, configurator, configurable));
+			} else {
+				root.appendChild(toXMLAndChangeEncryption(doc, configurator, configurable, decryptKey, encryptKey));
 			}
 		}
 		return doc;
@@ -958,7 +1100,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	public Document getConfigurablesAsXMLAndChangeEncryption(AbstractConfigurator<? extends Configurable> configurator,
 	        boolean onlyLocal, Key decryptKey, Key encryptKey) {
 		Document doc = XMLTools.createDocument();
-		Element root = doc.createElement("configuration");
+		Element root = doc.createElement(CONFIGURATION_TAG);
 		doc.appendChild(root);
 		for (Configurable configurable : configurables.get(configurator.getTypeId()).values()) {
 			if (onlyLocal && configurable.getSource() != null) {
@@ -983,6 +1125,19 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 		element.setAttribute("name", configurable.getName());
 		if (configurable.getId() != -1) {
 			element.setAttribute("id", String.valueOf(configurable.getId()));
+		}
+		String source = getSourceNameForConfigurable(configurable);
+		if (permittedGroups != null && permittedGroups.get(configurable.getTypeId()) != null && permittedGroups
+				.get(configurable.getTypeId()).get(new ComparablePair<>(configurable.getName(), source)) != null) {
+			Element permittedGroupsElement = doc.createElement("permittedGroups");
+			Set<String> configPermittedGroups = permittedGroups.get(configurable.getTypeId())
+					.get(new ComparablePair<>(configurable.getName(), source));
+			for (String group : configPermittedGroups) {
+				Element valueElement = doc.createElement("value");
+				valueElement.appendChild(doc.createTextNode(group));
+				permittedGroupsElement.appendChild(valueElement);
+			}
+			element.appendChild(permittedGroupsElement);
 		}
 		for (Entry<String, String> param : configurable.getParameters().entrySet()) {
 			String key = param.getKey();
@@ -1029,16 +1184,9 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 */
 	public static Map<Pair<Integer, String>, Map<String, String>> fromXML(Document doc,
 	        AbstractConfigurator<? extends Configurable> configurator) throws ConfigurationException {
-		Map<Pair<Integer, String>, Map<String, String>> result = new TreeMap<>(new Comparator<Pair<Integer, String>>() {
-
-			@Override
-			public int compare(Pair<Integer, String> o1, Pair<Integer, String> o2) {
-				// cannot be null by contract
-				return o1.getSecond().compareTo(o2.getSecond());
-			}
-		});
+		Map<Pair<Integer, String>, Map<String, String>> result = new TreeMap<>(Comparator.comparing(Pair::getSecond));
 		Element root = doc.getDocumentElement();
-		if (!"configuration".equals(root.getTagName())) {
+		if (!CONFIGURATION_TAG.equals(root.getTagName())) {
 			throw new ConfigurationException("XML root tag must be <configuration>");
 		}
 
@@ -1076,7 +1224,7 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 */
 	public static List<Pair<Integer, String>> newIdsFromXML(Document doc) throws ConfigurationException {
 		Element root = doc.getDocumentElement();
-		if (!"configuration".equals(root.getTagName())) {
+		if (!CONFIGURATION_TAG.equals(root.getTagName())) {
 			throw new ConfigurationException("XML root tag must be <configuration>");
 		}
 		List<Pair<Integer, String>> newIds = new LinkedList<>();
@@ -1101,17 +1249,10 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 	 */
 	public static Map<Pair<Integer, String>, Set<String>> permittedGroupsfromXML(Document doc,
 	        AbstractConfigurator<? extends Configurable> configurator) throws ConfigurationException {
-		Map<Pair<Integer, String>, Set<String>> result = new TreeMap<>(new Comparator<Pair<Integer, String>>() {
-
-			@Override
-			public int compare(Pair<Integer, String> o1, Pair<Integer, String> o2) {
-				// cannot be null by contract
-				return o1.getSecond().compareTo(o2.getSecond());
-			}
-		});
+		Map<Pair<Integer, String>, Set<String>> result = new TreeMap<>(Comparator.comparing(Pair::getSecond));
 
 		Element root = doc.getDocumentElement();
-		if (!"configuration".equals(root.getTagName())) {
+		if (!CONFIGURATION_TAG.equals(root.getTagName())) {
 			throw new ConfigurationException("XML root tag must be <configuration>");
 		}
 
@@ -1177,11 +1318,8 @@ public abstract class ConfigurationManager implements Observable<Pair<EventType,
 				Set<ComparablePair<String, String>> keySet = new HashSet<>(map.keySet());
 				for (ComparablePair<String, String> confKey : keySet) {
 
-					if (map.get(confKey).getSource() == null && source == null) {
-						map.remove(confKey);
-
-					} else
-					    if (map.get(confKey).getSource() != null && source != null && confKey.getSecond().equals(source)) {
+					boolean noRegConfSource = map.get(confKey).getSource() == null;
+					if (noRegConfSource && source == null || noRegConfSource && confKey.getSecond().equals(source)) {
 						map.remove(confKey);
 					}
 				}

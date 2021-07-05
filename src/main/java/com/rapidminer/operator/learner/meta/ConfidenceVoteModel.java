@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -144,12 +144,11 @@ public class ConfidenceVoteModel extends SimplePredictionModel implements MetaMo
 			example.setConfidence(className, confidence);
 		}
 
-		if (bestClasses.size() == 1) {
-			return getLabel().getMapping().getIndex(bestClasses.get(0));
-		} else {
-			return getLabel().getMapping()
-					.getIndex(bestClasses.get(RandomGenerator.getGlobalRandomGenerator().nextInt(bestClasses.size())));
+		int bestClassIndex = 0;
+		if (bestClasses.size() != 1) {
+			bestClassIndex = RandomGenerator.getGlobalRandomGenerator().nextInt(bestClasses.size());
 		}
+		return getLabel().getMapping().getIndex(bestClasses.get(bestClassIndex));
 	}
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -26,6 +26,7 @@ import com.rapidminer.gui.tools.ResourceAction;
 import com.rapidminer.gui.tools.dialogs.InputDialog;
 import com.rapidminer.parameter.ParameterTypeAttributeOrderingRules;
 import com.rapidminer.tools.I18N;
+import com.rapidminer.tools.container.Pair;
 
 import java.awt.Color;
 import java.awt.Component;
@@ -35,17 +36,17 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-
+import java.util.stream.Collectors;
 import javax.swing.Action;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
@@ -67,9 +68,9 @@ public class AttributeOrderingDialog extends PropertyDialog {
 
 	private static final long serialVersionUID = 5396725165122306231L;
 
-	private final ArrayList<String> attributes;
+	private final List<String> attributes;
 
-	private final ArrayList<String> selectedRules;
+	private final List<String> selectedRules;
 
 	private final FilterTextField attributeSearchField;
 
@@ -85,19 +86,19 @@ public class AttributeOrderingDialog extends PropertyDialog {
 
 	private FilterCondition currentTextFieldCondition;
 
-	private final Map<String, FilterCondition> ruleToConditionMap = new HashMap<String, FilterCondition>();
+	private final Map<String, FilterCondition> ruleToConditionMap = new HashMap<>();
 
 	private final Action selectAttributesAction = new ResourceAction(true, "attribute_ordering.attributes_select") {
 
 		private static final long serialVersionUID = -3046621278306353077L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			int[] indices = attributeList.getSelectedIndices();
 			attributeList.setSelectedIndices(new int[] {});
-			List<String> selectedItems = new LinkedList<String>();
+			List<String> selectedItems = new LinkedList<>();
 			for (int i = 0; i < indices.length; i++) {
-				selectedItems.add(attributeListModel.getElementAt(indices[i]).toString());
+				selectedItems.add(attributeListModel.getElementAt(indices[i]));
 
 			}
 			for (String item : selectedItems) {
@@ -118,12 +119,12 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		private static final long serialVersionUID = -3046621278306353077L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			int[] indices = selectedRulesList.getSelectedIndices();
 			selectedRulesList.setSelectedIndices(new int[] {});
-			List<String> selectedItems = new LinkedList<String>();
+			List<String> selectedItems = new LinkedList<>();
 			for (int i = 0; i < indices.length; i++) {
-				selectedItems.add(selectedRulesListModel.getElementAt(indices[i]).toString());
+				selectedItems.add(selectedRulesListModel.getElementAt(indices[i]));
 
 			}
 			for (String item : selectedItems) {
@@ -146,7 +147,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			final String newRule = addRuleTextField.getText();
 
 			// clear text field
@@ -176,7 +177,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 
 			int[] selectedIndices = selectedRulesList.getSelectedIndices();
 			if (selectedIndices.length != 0) {
@@ -187,8 +188,8 @@ public class AttributeOrderingDialog extends PropertyDialog {
 
 						// bubble sort rules list model
 						int currentIndex = selectedIndices[i];
-						String movedDown = selectedRulesListModel.get(currentIndex - 1).toString();
-						String movedUp = selectedRulesListModel.get(currentIndex).toString();
+						String movedDown = selectedRulesListModel.get(currentIndex - 1);
+						String movedUp = selectedRulesListModel.get(currentIndex);
 
 						selectedRulesListModel.set(currentIndex, movedDown);
 						selectedRulesListModel.set(currentIndex - 1, movedUp);
@@ -211,7 +212,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 
 			int[] selectedIndices = selectedRulesList.getSelectedIndices();
 			if (selectedIndices.length != 0) {
@@ -222,8 +223,8 @@ public class AttributeOrderingDialog extends PropertyDialog {
 
 						// bubble sort rules list model
 						int currentIndex = selectedIndices[i] + 1;
-						String movedDown = selectedRulesListModel.get(currentIndex - 1).toString();
-						String movedUp = selectedRulesListModel.get(currentIndex).toString();
+						String movedDown = selectedRulesListModel.get(currentIndex - 1);
+						String movedUp = selectedRulesListModel.get(currentIndex);
 
 						selectedRulesListModel.set(currentIndex, movedDown);
 						selectedRulesListModel.set(currentIndex - 1, movedUp);
@@ -248,7 +249,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 
 		@SuppressWarnings("deprecation")
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			int[] selectedIndices = selectedRulesList.getSelectedIndices();
 			if (selectedIndices.length != 0) {
 				int currentIndex = selectedIndices[0];
@@ -274,7 +275,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void actionPerformed(ActionEvent e) {
+		public void loggedActionPerformed(ActionEvent e) {
 			applyFilterConditions();
 		}
 	};
@@ -287,17 +288,14 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		JPanel panel = new JPanel(new GridBagLayout());
 		GridBagConstraints c = new GridBagConstraints();
 
-		attributes = new ArrayList<String>();
-		selectedRules = new ArrayList<String>();
+		attributes = type.getAttributeNamesAndTypes(false).stream().map(Pair::getFirst)
+				.filter(name -> !preselectedItems.contains(name)).collect(Collectors.toList());
+		attributes.sort(FilterableListModel.STRING_COMPARATOR);
+		attributeListModel = new FilterableListModel<>(attributes, false);
+		attributeListModel.setComparator(FilterableListModel.STRING_COMPARATOR);
 
-		attributeListModel = new FilterableListModel<>();
+		selectedRules = new ArrayList<>();
 		selectedRulesListModel = new DefaultListModel<>();
-		for (String item : type.getAttributeNames()) {
-			if (item != null && item.trim().length() != 0 && !preselectedItems.contains(item)) {
-				attributes.add(item);
-				attributeListModel.addElement(item);
-			}
-		}
 		if (!preselectedItems.isEmpty()) {
 			for (String item : preselectedItems) {
 				if (item != null && item.trim().length() != 0) {
@@ -316,7 +314,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 			private static final long serialVersionUID = -3046621278306353077L;
 
 			@Override
-			public void actionPerformed(ActionEvent e) {
+			public void loggedActionPerformed(ActionEvent e) {
 				attributeSearchField.clearFilter();
 				attributeSearchField.requestFocusInWindow();
 			}
@@ -345,7 +343,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		itemSearchFieldPanel.add(hideMatchedButton, c);
 
 		attributeList = new JList<>(attributeListModel);
-		attributeList.addMouseListener(new MouseListener() {
+		attributeList.addMouseListener(new MouseAdapter() {
 
 			@Override
 			public void mouseClicked(MouseEvent e) {
@@ -353,18 +351,6 @@ public class AttributeOrderingDialog extends PropertyDialog {
 					selectAttributesAction.actionPerformed(null);
 				}
 			}
-
-			@Override
-			public void mouseEntered(MouseEvent e) {}
-
-			@Override
-			public void mouseExited(MouseEvent e) {}
-
-			@Override
-			public void mousePressed(MouseEvent e) {}
-
-			@Override
-			public void mouseReleased(MouseEvent e) {}
 		});
 		attributeList.setCellRenderer(new ListCellRenderer<String>() {
 
@@ -374,7 +360,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 			public Component getListCellRendererComponent(JList<? extends String> list, String value, int index,
 					boolean isSelected, boolean cellHasFocus) {
 				Component renderComp = renderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-				if (currentTextFieldCondition != null && currentTextFieldCondition.matches(value.toString())) {
+				if (currentTextFieldCondition != null && currentTextFieldCondition.matches(value)) {
 					renderComp.setForeground(Color.red);
 				} else {
 					renderComp.setForeground(Color.black);
@@ -414,10 +400,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		c.fill = GridBagConstraints.BOTH;
 
 		addRuleTextField = new JTextField();
-		addRuleTextField.addKeyListener(new KeyListener() {
-
-			@Override
-			public void keyTyped(KeyEvent e) {}
+		addRuleTextField.addKeyListener(new KeyAdapter() {
 
 			@Override
 			public void keyReleased(KeyEvent e) {
@@ -433,9 +416,6 @@ public class AttributeOrderingDialog extends PropertyDialog {
 
 				}
 			}
-
-			@Override
-			public void keyPressed(KeyEvent e) {}
 		});
 		addRulePanel.add(addRuleTextField, c);
 
@@ -455,7 +435,7 @@ public class AttributeOrderingDialog extends PropertyDialog {
 		JPanel orderingListAndButtonContainer = new JPanel(new GridBagLayout());
 
 		selectedRulesList = new JList<>(selectedRulesListModel);
-		selectedRulesList.addMouseListener(new MouseListener() {
+		selectedRulesList.addMouseListener(new MouseAdapter() {
 
 			@Override
 			public void mouseClicked(MouseEvent e) {
@@ -463,18 +443,6 @@ public class AttributeOrderingDialog extends PropertyDialog {
 					deselectAttributesAction.actionPerformed(null);
 				}
 			}
-
-			@Override
-			public void mouseEntered(MouseEvent e) {}
-
-			@Override
-			public void mouseExited(MouseEvent e) {}
-
-			@Override
-			public void mousePressed(MouseEvent e) {}
-
-			@Override
-			public void mouseReleased(MouseEvent e) {}
 		});
 		JScrollPane selectedRulesListPane = new ExtendedJScrollPane(selectedRulesList);
 		selectedRulesListPane.setBorder(createBorder());

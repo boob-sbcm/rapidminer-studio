@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -28,10 +28,15 @@ import com.rapidminer.example.table.DoubleArrayDataRow;
 import com.rapidminer.example.table.ExampleTable;
 import com.rapidminer.example.table.NominalMapping;
 import com.rapidminer.operator.Annotations;
+import com.rapidminer.operator.UserError;
+import com.rapidminer.operator.WrapperOperatorRuntimeException;
 import com.rapidminer.operator.similarity.ExampleSet2SimilarityExampleSet;
 import com.rapidminer.tools.Ontology;
 import com.rapidminer.tools.math.similarity.DistanceMeasure;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.Iterator;
 
 
@@ -42,6 +47,28 @@ import java.util.Iterator;
  * @author Ingo Mierswa
  */
 public class SimilarityExampleSet extends AbstractExampleSet {
+
+	/**
+	 * {@link InvocationHandler} for {@link ExampleTable} that can take care of
+	 * {@link com.rapidminer.operator.execution.FlowCleaner} calls. Will throw a {@link UserError}
+	 * for all other calls.
+	 *
+	 * @author Jan Czogalla
+	 * @since 8.2
+	 */
+	private static class SimilarityHandler implements InvocationHandler {
+
+		private static final String ATTRIBUTE_COUNT_METHOD_NAME = "getAttributeCount";
+
+		@Override
+		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+			if (method.getName().equals(ATTRIBUTE_COUNT_METHOD_NAME)) {
+				return 0;
+			}
+			throw new WrapperOperatorRuntimeException(new UserError(null, "similarity_example_set_not_extendable"));
+		}
+
+	}
 
 	private static final long serialVersionUID = 4757975818441794105L;
 
@@ -120,6 +147,16 @@ public class SimilarityExampleSet extends AbstractExampleSet {
 	}
 
 	@Override
+	public Object getUserData(String key) {
+		return parent.getUserData(key);
+	}
+
+	@Override
+	public Object setUserData(String key, Object value) {
+		return parent.setUserData(key, value);
+	}
+
+	@Override
 	public boolean equals(Object o) {
 		if (!super.equals(o)) {
 			return false;
@@ -178,7 +215,9 @@ public class SimilarityExampleSet extends AbstractExampleSet {
 
 	@Override
 	public ExampleTable getExampleTable() {
-		return null;// this.parent.getExampleTable();
+		// return a proxy object so the flow cleaner is happy
+		return (ExampleTable) Proxy.newProxyInstance(this.getClass().getClassLoader(),
+				new Class<?>[]{ExampleTable.class}, new SimilarityHandler());
 	}
 
 	@Override

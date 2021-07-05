@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -18,17 +18,20 @@
 */
 package com.rapidminer.operator.io;
 
+import java.util.List;
+
+import com.rapidminer.connection.ConnectionInformationContainerIOObject;
 import com.rapidminer.operator.IOObject;
 import com.rapidminer.operator.OperatorDescription;
 import com.rapidminer.operator.OperatorException;
 import com.rapidminer.operator.UserError;
 import com.rapidminer.parameter.ParameterType;
 import com.rapidminer.parameter.ParameterTypeRepositoryLocation;
+import com.rapidminer.repository.IOObjectEntry;
 import com.rapidminer.repository.RepositoryException;
 import com.rapidminer.repository.RepositoryLocation;
 import com.rapidminer.repository.RepositoryManager;
-
-import java.util.List;
+import com.rapidminer.tools.usagestats.ActionStatisticsCollector;
 
 
 /**
@@ -48,10 +51,21 @@ public class RepositoryStorer extends AbstractWriter<IOObject> {
 	@Override
 	public IOObject write(IOObject ioobject) throws OperatorException {
 		try {
-			RepositoryLocation location = getParameterAsRepositoryLocation(PARAMETER_REPOSITORY_ENTRY);
+			RepositoryLocation location = getParameterAsRepositoryLocationData(PARAMETER_REPOSITORY_ENTRY, IOObjectEntry.class);
+			logConnection(ioobject);
 			return RepositoryManager.getInstance(null).store(ioobject, location, this);
 		} catch (RepositoryException e) {
 			throw new UserError(this, e, 315, getParameterAsString(PARAMETER_REPOSITORY_ENTRY), e.getMessage());
+		}
+	}
+
+	/**
+	 * Logs if the object is a connection.
+	 */
+	private void logConnection(IOObject ioObject) {
+		if (ioObject instanceof ConnectionInformationContainerIOObject) {
+			ActionStatisticsCollector.INSTANCE.logNewConnection(this,
+					((ConnectionInformationContainerIOObject) ioObject).getConnectionInformation());
 		}
 	}
 
@@ -61,6 +75,7 @@ public class RepositoryStorer extends AbstractWriter<IOObject> {
 		ParameterTypeRepositoryLocation type = new ParameterTypeRepositoryLocation(PARAMETER_REPOSITORY_ENTRY,
 				"Repository entry.", true, false, false, false, true, true);
 		type.setExpert(false);
+		type.setPrimary(true);
 		types.add(type);
 		return types;
 	}

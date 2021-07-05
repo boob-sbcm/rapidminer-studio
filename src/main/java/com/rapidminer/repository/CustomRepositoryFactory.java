@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -44,6 +44,17 @@ public interface CustomRepositoryFactory {
 	 *         the {@link NewRepositoryDialog}, {@code false} otherwise
 	 */
 	boolean enableRepositoryConfiguration();
+
+	/**
+	 * Whether this repo should show up in the "Create / Connect to Repository" dialog. Defaults to {@code true}.
+	 *
+	 * @return {@code true} if it should appear in the radio button list; {@code false} if it should not be creatable
+	 * via the new repo dialog
+	 * @since 9.7
+	 */
+	default boolean showRepositoryConfigurationInNewRepositoryDialog() {
+		return true;
+	}
 
 	/**
 	 * @return the {@link RepositoryConfigurationPanel} for this factory. The method is called only

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -25,8 +25,9 @@ import org.jfree.chart.JFreeChart;
 
 /**
  * @author Nils Woehler
- * 
+ * @deprecated since 9.2.0
  */
+@Deprecated
 public interface JFreeChartPlotEngineListener {
 
 	public void chartChanged(JFreeChartPlotEngine source, JFreeChart chart);

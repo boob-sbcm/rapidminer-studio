@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.tools.components;
 
 import java.awt.AWTEvent;
@@ -44,7 +44,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import java.util.logging.Level;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
@@ -66,10 +66,16 @@ import com.rapidminer.gui.tools.ExtendedHTMLJEditorPane;
 import com.rapidminer.gui.tools.ProgressThread;
 import com.rapidminer.gui.tools.ResourceLabel;
 import com.rapidminer.gui.tools.SwingTools;
-import com.rapidminer.repository.Entry;
+import com.rapidminer.operator.IOObject;
 import com.rapidminer.repository.IOObjectEntry;
 import com.rapidminer.repository.RepositoryLocation;
+import com.rapidminer.repository.RepositoryLocationBuilder;
+import com.rapidminer.repository.RepositoryLocationType;
+import com.rapidminer.tools.FontTools;
+import com.rapidminer.tools.LogService;
 import com.rapidminer.tools.RMUrlHandler;
+import com.rapidminer.tools.Tools;
+import com.rapidminer.tools.plugin.Plugin;
 
 
 /**
@@ -105,7 +111,9 @@ public class ToolTipWindow {
 
 	public interface TipProvider {
 
-		/** Returns the actual tip belonging to this point. Called after {@link #getIdUnder(Point)}. */
+		/**
+		 * Returns the actual tip belonging to this point. Called after {@link #getIdUnder(Point)}.
+		 */
 		public String getTip(Object id);
 
 		/** Returns an additional tooltip component to be added below the text field. */
@@ -290,12 +298,13 @@ public class ToolTipWindow {
 
 		showTipTimer.setRepeats(false);
 
-		tipPane.setFont(new Font("Sans-serif", Font.PLAIN, 9));
+		tipPane.setFont(FontTools.getFont(Font.SANS_SERIF, Font.PLAIN, 9));
 		tipPane.setMargin(new Insets(4, 4, 4, 4));
 		tipPane.setEditable(false);
 		tipPane.addHyperlinkListener(new HyperlinkListener() {
 
 			@Override
+			@SuppressWarnings("unchecked")
 			public void hyperlinkUpdate(HyperlinkEvent e) {
 				if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
 					if (e.getDescription().startsWith("loadMetaData?")) {
@@ -316,13 +325,26 @@ public class ToolTipWindow {
 							public void run() {
 								getProgressListener().setTotal(100);
 								getProgressListener().setCompleted(10);
+								String[] split = loc.split("\\|");
+								Class<? extends IOObjectEntry> expectedDataEntryClass = IOObjectEntry.class;
+								String locationString = split[0];
 								try {
-									Entry entry = new RepositoryLocation(loc).locateEntry();
-									if (entry instanceof IOObjectEntry) {
-										((IOObjectEntry) entry).retrieveMetaData();
+									if (split.length == 2) {
+										// this is needed when a repo contains more than one IOObjectEntry in the same folder; see Repository#getIOObjectEntrySubtype()
+										try {
+											Class<? extends IOObject> ioObjectClass = (Class<? extends IOObject>) Class.forName(split[1], false, Plugin.getMajorClassLoader());
+											RepositoryLocation fakeLoc = new RepositoryLocationBuilder().withLocationType(RepositoryLocationType.DATA_ENTRY).buildFromAbsoluteLocation(locationString);
+											expectedDataEntryClass = fakeLoc.getRepository().getIOObjectEntrySubtype(ioObjectClass);
+										} catch (Throwable e) {
+											LogService.getRoot().log(Level.WARNING, "com.rapidminer.gui.tools.components.ToolTipWindow.md_download_error", e);
+										}
+									}
+									IOObjectEntry entry = new RepositoryLocationBuilder().withExpectedDataEntryType(expectedDataEntryClass).buildFromAbsoluteLocation(locationString).locateData();
+									if (entry != null) {
+										entry.retrieveMetaData();
 									}
 								} catch (Exception e) {
-									SwingTools.showSimpleErrorMessage("error_downloading_metadata", e, loc, e.getMessage());
+									SwingTools.showSimpleErrorMessage("error_downloading_metadata", e, locationString, e.getMessage());
 								} finally {
 									getProgressListener().complete();
 								}
@@ -353,11 +375,11 @@ public class ToolTipWindow {
 		css.addRule("h4 {margin-bottom:0; margin-top:1ex; padding:0}");
 		css.addRule("p  {margin-top:0; margin-bottom:1ex; padding:0}");
 		css.addRule("ul {margin-top:0; margin-bottom:1ex; list-style-image: url("
-				+ getClass().getResource("/com/rapidminer/resources/icons/modern/help/circle.png") + ")}");
+				+ Tools.getResource("icons/help/circle.png") + ")}");
 		css.addRule("ul li {padding-bottom: 2px}");
 		css.addRule("li.outPorts {padding-bottom: 0px}");
 		css.addRule("ul li ul {margin-top:0; margin-bottom:1ex; list-style-image: url("
-				+ getClass().getResource("/com/rapidminer/resources/icons/modern/help/line.png") + ")");
+				+ Tools.getResource("icons/help/line.png") + ")");
 		css.addRule("li ul li {padding-bottom:0}");
 
 		tipScrollPane = new JScrollPane(tipPane);
@@ -516,16 +538,16 @@ public class ToolTipWindow {
 
 		currentDialog.pack();
 		if (undecorated) {
-			currentDialog.setLocation(new Point((int) (parent.getLocationOnScreen().getX() + point.getX()), (int) (parent
-					.getLocationOnScreen().getY() + point.getY())));
+			currentDialog.setLocation(new Point((int) (parent.getLocationOnScreen().getX() + point.getX()),
+					(int) (parent.getLocationOnScreen().getY() + point.getY())));
 		} else {
 			Rectangle innerBounds = currentDialog.getComponent(0).getBounds();
 			currentDialog.setLocation(new Point((int) (parent.getLocationOnScreen().getX() + point.getX() - innerBounds.x),
 					(int) (parent.getLocationOnScreen().getY() + point.getY() - innerBounds.y)));
 			int dx = currentDialog.getSize().width - tipScrollPane.getSize().width;
 			int dy = currentDialog.getSize().height - tipScrollPane.getSize().height;
-			currentDialog.setPreferredSize(new Dimension(tipScrollPane.getPreferredSize().width + dx, tipScrollPane
-					.getPreferredSize().height + dy));
+			currentDialog.setPreferredSize(new Dimension(tipScrollPane.getPreferredSize().width + dx,
+					tipScrollPane.getPreferredSize().height + dy));
 		}
 
 		GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
@@ -540,14 +562,14 @@ public class ToolTipWindow {
 
 		Rectangle bounds = currentDialog.getBounds();
 		if (bounds.getMaxX() > boundsOfCurrentScreen.getMaxX()) {
-			currentDialog.setLocation(new Point((int) (boundsOfCurrentScreen.getMaxX() - bounds.getWidth()), (int) bounds
-					.getY()));
+			currentDialog.setLocation(
+					new Point((int) (boundsOfCurrentScreen.getMaxX() - bounds.getWidth()), (int) bounds.getY()));
 			bounds = currentDialog.getBounds();
 		}
 
 		if (bounds.getMaxY() > boundsOfCurrentScreen.getMaxY()) {
-			currentDialog.setLocation(new Point((int) bounds.getX(), (int) (boundsOfCurrentScreen.getMaxY() - bounds
-					.getHeight())));
+			currentDialog.setLocation(
+					new Point((int) bounds.getX(), (int) (boundsOfCurrentScreen.getMaxY() - bounds.getHeight())));
 		}
 		currentDialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
 				.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0, false), "CLOSE");
@@ -569,8 +591,8 @@ public class ToolTipWindow {
 		if (tipPaneHeight > 300) {
 			tipScrollPane.setPreferredSize(new Dimension(tipPaneWidth + 50, 300 + (undecorated ? 0 : f3Label.getHeight())));
 		} else {
-			tipScrollPane.setPreferredSize(new Dimension(tipPaneWidth + 50, tipPaneHeight + 30
-					+ (undecorated ? 0 : f3Label.getHeight())));
+			tipScrollPane.setPreferredSize(
+					new Dimension(tipPaneWidth + 50, tipPaneHeight + 30 + (undecorated ? 0 : f3Label.getHeight())));
 		}
 	}
 
@@ -585,8 +607,8 @@ public class ToolTipWindow {
 			if (!parent.isDisplayable()) {
 				return;
 			}
-			Rectangle parentBounds = new Rectangle(parent.getLocationOnScreen(), new Dimension(parent.getWidth(),
-					parent.getHeight()));
+			Rectangle parentBounds = new Rectangle(parent.getLocationOnScreen(),
+					new Dimension(parent.getWidth(), parent.getHeight()));
 			if (!parentBounds.contains(MouseInfo.getPointerInfo().getLocation())) {
 				return;
 			}

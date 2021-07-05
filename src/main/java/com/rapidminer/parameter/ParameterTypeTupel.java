@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -20,6 +20,7 @@ package com.rapidminer.parameter;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.BiFunction;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -30,6 +31,7 @@ import com.rapidminer.operator.Operator;
 import com.rapidminer.tools.Tools;
 import com.rapidminer.tools.XMLException;
 import com.rapidminer.tools.container.Pair;
+import com.rapidminer.tools.encryption.EncryptionProvider;
 
 
 /**
@@ -133,7 +135,13 @@ public class ParameterTypeTupel extends CombinedParameterType {
 	}
 
 	@Override
+	@Deprecated
 	public Element getXML(String key, String value, boolean hideDefault, Document doc) {
+		return getXML(key, value, hideDefault, EncryptionProvider.DEFAULT_CONTEXT, doc);
+	}
+
+	@Override
+	public Element getXML(String key, String value, boolean hideDefault, String encryptionContext, Document doc) {
 		Element element = doc.createElement("parameter");
 		element.setAttribute("key", key);
 		String[] tupel;
@@ -144,6 +152,7 @@ public class ParameterTypeTupel extends CombinedParameterType {
 		}
 		StringBuilder valueString = new StringBuilder();
 		boolean first = true;
+		int i = 0;
 		for (String part : tupel) {
 			if (!first) {
 				valueString.append(XML_SEPERATOR_CHAR);
@@ -153,23 +162,16 @@ public class ParameterTypeTupel extends CombinedParameterType {
 			if (part == null) {
 				part = "";
 			}
-			valueString.append(Tools.escape(part, ESCAPE_CHAR, XML_SPECIAL_CHARACTERS));
+			ParameterType parameterType = getParameterTypes()[i];
+			String val = part;
+			// force encryption
+			if (parameterType instanceof ParameterTypePassword) {
+				val = parameterType.toXMLString(val, encryptionContext);
+			}
+			valueString.append(Tools.escape(val, ESCAPE_CHAR, XML_SPECIAL_CHARACTERS));
 		}
 		element.setAttribute("value", valueString.toString());
 		return element;
-	}
-
-	@SuppressWarnings("unchecked")
-	@Override
-	public String getXML(String indent, String key, String value, boolean hideDefault) {
-		StringBuffer result = new StringBuffer();
-		String valueString = value;
-		if (value == null) {
-			valueString = transformTupel2String((Pair<String, String>) getDefaultValue());
-		}
-
-		result.append(indent + "<parameter key=\"" + key + "\" value=\"" + valueString + "\" />" + Tools.getLineSeparator());
-		return result.toString();
 	}
 
 	@Override
@@ -203,7 +205,7 @@ public class ParameterTypeTupel extends CombinedParameterType {
 		while (split.size() < 2) {
 			split.add(null);
 		}
-		return split.toArray(new String[split.size()]);
+		return split.toArray(new String[0]);
 	}
 
 	public static String transformTupel2String(String firstValue, String secondValue) {
@@ -228,11 +230,23 @@ public class ParameterTypeTupel extends CombinedParameterType {
 		return builder.toString();
 	}
 
+	/** @return the changed value after all tupel entries were notified */
 	@Override
 	public String notifyOperatorRenaming(String oldOperatorName, String newOperatorName, String parameterValue) {
+		return notifyOperatorRenamingReplacing((t, v) -> t.notifyOperatorRenaming(oldOperatorName, newOperatorName, v), parameterValue);
+	}
+
+	/** @return the changed value after all tupel entries were notified */
+	@Override
+	public String notifyOperatorReplacing(String oldName, Operator oldOp, String newName, Operator newOp, String parameterValue) {
+		return notifyOperatorRenamingReplacing((t, v) -> t.notifyOperatorReplacing(oldName, oldOp, newName, newOp, v), parameterValue);
+	}
+
+	/** @since 9.3 */
+	private String notifyOperatorRenamingReplacing(BiFunction<ParameterType, String, String> replacer, String parameterValue) {
 		String[] tupel = transformString2Tupel(parameterValue);
 		for (int i = 0; i < types.length; i++) {
-			tupel[i] = types[i].notifyOperatorRenaming(oldOperatorName, newOperatorName, tupel[i]);
+			tupel[i] = replacer.apply(types[i], tupel[i]);
 		}
 		return transformTupel2String(tupel);
 	}

@@ -1,21 +1,21 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
- * 
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
+ *
  * Complete list of developers available at our web site:
- * 
+ *
  * http://rapidminer.com
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU Affero General Public License as published by the Free Software Foundation, either version 3
  * of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
  * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Affero General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see http://www.gnu.org/licenses/.
-*/
+ */
 package com.rapidminer.gui.new_plotter.engine.jfreechart;
 
 import java.awt.BasicStroke;
@@ -35,10 +35,8 @@ import java.util.TimeZone;
 import java.util.Vector;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
-import javax.swing.SwingWorker;
 
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -71,7 +69,6 @@ import com.rapidminer.gui.new_plotter.ConfigurationChangeResponse;
 import com.rapidminer.gui.new_plotter.MasterOfDesaster;
 import com.rapidminer.gui.new_plotter.PlotConfigurationError;
 import com.rapidminer.gui.new_plotter.PlotConfigurationQuickFix;
-import com.rapidminer.gui.new_plotter.StaticDebug;
 import com.rapidminer.gui.new_plotter.configuration.AxisParallelLineConfiguration;
 import com.rapidminer.gui.new_plotter.configuration.DataTableColumn.ValueType;
 import com.rapidminer.gui.new_plotter.configuration.DefaultDimensionConfig;
@@ -118,7 +115,9 @@ import com.rapidminer.gui.new_plotter.listener.events.ValueSourceChangeEvent;
 import com.rapidminer.gui.new_plotter.listener.events.ValueSourceChangeEvent.ValueSourceChangeType;
 import com.rapidminer.gui.plotter.CoordinateTransformation;
 import com.rapidminer.gui.plotter.NullCoordinateTransformation;
+import com.rapidminer.gui.tools.MultiSwingWorker;
 import com.rapidminer.gui.tools.SwingTools;
+import com.rapidminer.tools.FontTools;
 import com.rapidminer.tools.I18N;
 
 
@@ -164,9 +163,11 @@ import com.rapidminer.tools.I18N;
  *
  *
  * @author Marius Helf, Nils Woehler
+ * @deprecated since 9.2.0
  */
-public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListener, PlotConfigurationProcessingListener,
-		LegendItemSource {
+@Deprecated
+public class JFreeChartPlotEngine
+		implements PlotEngine, PlotConfigurationListener, PlotConfigurationProcessingListener, LegendItemSource {
 
 	private boolean initializing = false;
 
@@ -299,7 +300,7 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 
 	/**
 	 * Trigger an update of the {@link JFreeChart} that is stored in the {@link ChartPanel}. The
-	 * update is performed by using a {@link SwingWorker} thread. First the new Chart is created and
+	 * update is performed by using a {@link MultiSwingWorker} thread. First the new Chart is created and
 	 * afterwards the new chart is stored in the {@link ChartPanel}.
 	 *
 	 * @param informPlotConfigWhenDone
@@ -308,9 +309,7 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 	private synchronized void updateChartPanelChart(final boolean informPlotConfigWhenDone) {
 		updatingChart.getAndSet(true);
 
-		StaticDebug.debug("######################### STARTING CHART UPDATE ######################");
-
-		SwingWorker<JFreeChart, Void> updateChartWorker = new SwingWorker<JFreeChart, Void>() {
+		MultiSwingWorker<JFreeChart, Void> updateChartWorker = new MultiSwingWorker<JFreeChart, Void>() {
 
 			@Override
 			public JFreeChart doInBackground() throws Exception {
@@ -369,7 +368,7 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 
 		};
 
-		updateChartWorker.execute();
+		updateChartWorker.start();
 	}
 
 	/**
@@ -391,14 +390,14 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 						RenderingHints renderingHints = chart.getRenderingHints();
 
 						// enable antialiasing
-						renderingHints.add(new RenderingHints(RenderingHints.KEY_ANTIALIASING,
-								RenderingHints.VALUE_ANTIALIAS_ON));
+						renderingHints
+								.add(new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON));
 
 						// disable normalization (normalization tries to draw the center of strokes
 						// at whole pixels, which causes e.g.
 						// scaled shapes to appear more like potatoes than like circles)
-						renderingHints.add(new RenderingHints(RenderingHints.KEY_STROKE_CONTROL,
-								RenderingHints.VALUE_STROKE_PURE));
+						renderingHints.add(
+								new RenderingHints(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE));
 						chart.setRenderingHints(renderingHints);
 
 						chartPanel.setChart(chart);
@@ -415,8 +414,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 						for (RangeAxisConfig rangeAxisConfig : plotInstance.getCurrentPlotConfigurationClone()
 								.getRangeAxisConfigs()) {
 							for (AxisParallelLineConfiguration line : rangeAxisConfig.getCrossHairLines().getLines()) {
-								Crosshair crosshair = new Crosshair(line.getValue(), line.getFormat().getColor(), line
-										.getFormat().getStroke());
+								Crosshair crosshair = new Crosshair(line.getValue(), line.getFormat().getColor(),
+										line.getFormat().getStroke());
 								crosshairOverlay.addRangeCrosshair(axisIdx, crosshair);
 							}
 							++axisIdx;
@@ -425,8 +424,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 						// add overlays for domain axis
 						for (AxisParallelLineConfiguration line : plotInstance.getCurrentPlotConfigurationClone()
 								.getDomainConfigManager().getCrosshairLines().getLines()) {
-							Crosshair crosshair = new Crosshair(line.getValue(), line.getFormat().getColor(), line
-									.getFormat().getStroke());
+							Crosshair crosshair = new Crosshair(line.getValue(), line.getFormat().getColor(),
+									line.getFormat().getStroke());
 							crosshairOverlay.addDomainCrosshair(crosshair);
 						}
 						chartPanel.addOverlay(crosshairOverlay);
@@ -492,7 +491,7 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 		} else {
 			Font font = currentPlotConfigurationClone.getTitleFont();
 			if (font == null) {
-				font = new Font("Dialog", Font.PLAIN, 10);
+				font = FontTools.getFont(Font.DIALOG, Font.PLAIN, 10);
 			}
 
 			TextTitle textTitle = new TextTitle(text, font);
@@ -548,7 +547,6 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 	private boolean isPlotInstanceValid() {
 		plotInstance.getMasterOfDesaster().clearAll();
 		if (!plotInstance.isValid()) {
-			StaticDebug.debug("######## CAUTION: INVALID PLOT INSTANCE!!");
 
 			if (!plotInstance.getCurrentPlotConfigurationClone().isValid()) {
 				ConfigurationChangeResponse response = new ConfigurationChangeResponse();
@@ -580,7 +578,7 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 
 			Font font = plotInstance.getCurrentPlotConfigurationClone().getTitleFont();
 			if (font == null) {
-				font = new Font("Dialog", Font.PLAIN, 10);
+				font = FontTools.getFont(Font.DIALOG, Font.PLAIN, 10);
 			}
 
 			TextTitle textTitle = new TextTitle(text, font);
@@ -744,9 +742,9 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 		List<LegendTitle> legendTitles = new LinkedList<LegendTitle>();
 		LegendConfiguration legendConfiguration = plotInstance.getCurrentPlotConfigurationClone().getLegendConfiguration();
 
-		LegendTitle legendTitle = new SmartLegendTitle(this, new FlowArrangement(HorizontalAlignment.CENTER,
-				VerticalAlignment.CENTER, 30, 2), new ColumnArrangement(HorizontalAlignment.LEFT, VerticalAlignment.CENTER,
-				0, 2));
+		LegendTitle legendTitle = new SmartLegendTitle(this,
+				new FlowArrangement(HorizontalAlignment.CENTER, VerticalAlignment.CENTER, 30, 2),
+				new ColumnArrangement(HorizontalAlignment.LEFT, VerticalAlignment.CENTER, 0, 2));
 		legendTitle.setItemPaint(legendConfiguration.getLegendFontColor());
 
 		RectangleEdge position = legendConfiguration.getLegendPosition().getPosition();
@@ -1036,11 +1034,11 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 			// push dataset and renderer into plot
 			try {
 				plot.setDataset(datasetIdx, dataset); // if Eclipse states that
-														// dataset might not be
-														// initialized, you did
-														// not consider all
-														// possibilities in the
-														// condition block above
+														 // dataset might not be
+														 // initialized, you did
+														 // not consider all
+														 // possibilities in the
+														 // condition block above
 			} catch (RuntimeException e) {
 				// probably this is because the domain axis contains values less
 				// then zero and the scaling is logarithmic.
@@ -1057,8 +1055,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 			plot.mapDatasetToRangeAxis(datasetIdx, rangeAxisIdx);
 			plot.setRenderer(datasetIdx, renderer);
 		} else {
-			ChartPlottimeException chartPlottimeException = new ChartPlottimeException(new PlotConfigurationError(
-					"generic_plotter_error"));
+			ChartPlottimeException chartPlottimeException = new ChartPlottimeException(
+					new PlotConfigurationError("generic_plotter_error"));
 			throw chartPlottimeException;
 		}
 	}
@@ -1116,8 +1114,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 
 			// don't support other error indicators than bars for unstacked bar
 			// charts, and none at all for stacked bar charts
-			if ((errorIndicator != IndicatorType.NONE && errorIndicator != IndicatorType.BARS)
-					|| (errorIndicator != IndicatorType.NONE && stackingMode != StackingMode.NONE)) {
+			if (errorIndicator != IndicatorType.NONE && errorIndicator != IndicatorType.BARS
+					|| errorIndicator != IndicatorType.NONE && stackingMode != StackingMode.NONE) {
 				throwErrorIndicatorNotSupported(valueSource, errorIndicator);
 				return;
 			} else {
@@ -1126,8 +1124,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 						dataset = ChartDatasetFactory.createDefaultStatisticalCategoryDataset(valueSource, plotInstance);
 						renderer = ChartRendererFactory.createStatisticalBarRenderer(valueSource, plotInstance);
 					} else { // if (errorIndicator == ErrorIndicator.NONE) { //
-								// no if needed, because we made sure above that
-								// errorIndicator is one of NONE or BARS
+							 // no if needed, because we made sure above that
+							 // errorIndicator is one of NONE or BARS
 						dataset = ChartDatasetFactory.createDefaultCategoryDataset(valueSource, plotInstance, false, true);
 						renderer = ChartRendererFactory.createBarRenderer(valueSource, plotInstance);
 					}
@@ -1180,11 +1178,11 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 			// push dataset and renderer into plot
 			try {
 				plot.setDataset(datasetIdx, dataset); // if Eclipse states that
-														// dataset might not be
-														// initialized, you did
-														// not consider all
-														// possibilities in the
-														// condition block above
+														 // dataset might not be
+														 // initialized, you did
+														 // not consider all
+														 // possibilities in the
+														 // condition block above
 			} catch (RuntimeException e) {
 				// probably this is because the domain axis contains values less
 				// then zero and the scaling is logarithmic.
@@ -1201,8 +1199,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 			plot.mapDatasetToRangeAxis(datasetIdx, rangeAxisIdx);
 			plot.setRenderer(datasetIdx, renderer);
 		} else {
-			ChartPlottimeException chartPlottimeException = new ChartPlottimeException(new PlotConfigurationError(
-					"generic_plotter_error"));
+			ChartPlottimeException chartPlottimeException = new ChartPlottimeException(
+					new PlotConfigurationError("generic_plotter_error"));
 			throw chartPlottimeException;
 		}
 
@@ -1359,7 +1357,6 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 		synchronized (nextPlotInstanceLock) {
 			if (updatingChart.get()) {
 				if (plotInstance != this.plotInstance) {
-					StaticDebug.debug("Set NEW PLOTINSTANCE for PlotEnginge " + plotInstance);
 					this.nextPlotInstance = plotInstance;
 				}
 			} else {
@@ -1370,7 +1367,6 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 	}
 
 	private synchronized void updatingChartPanelChartDone() {
-		StaticDebug.debug("Updating chart done!");
 		updatingChart.getAndSet(false);
 		synchronized (nextPlotInstanceLock) {
 			if (nextPlotInstance != null) {
@@ -1380,7 +1376,6 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 	}
 
 	private void privateSetPlotInstance() {
-		StaticDebug.debug("PlotInstance has changed. Replacing..");
 		unsubscribeFromPlotInstance(plotInstance);
 		subscribeAtPlotInstance(nextPlotInstance);
 		this.plotInstance = nextPlotInstance;
@@ -1695,7 +1690,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 	 */
 	@Override
 	public LegendItemCollection getLegendItems() {
-		if (plotInstance.getCurrentPlotConfigurationClone().getLegendConfiguration().getLegendPosition() == LegendPosition.NONE) {
+		if (plotInstance.getCurrentPlotConfigurationClone().getLegendConfiguration()
+				.getLegendPosition() == LegendPosition.NONE) {
 			return null;
 		}
 		synchronized (this) {
@@ -1781,8 +1777,8 @@ public class JFreeChartPlotEngine implements PlotEngine, PlotConfigurationListen
 			if (format.getSeriesType() == VisualizationType.LINES_AND_SHAPES) {
 				if (format.getUtilityUsage() == IndicatorType.DIFFERENCE) {
 					if (format.getItemShape() != ItemShape.NONE) {
-						warnings.add(new PlotConfigurationError("difference_plot_with_items_not_supported", valueSource
-								.toString()));
+						warnings.add(new PlotConfigurationError("difference_plot_with_items_not_supported",
+								valueSource.toString()));
 					}
 				}
 			}

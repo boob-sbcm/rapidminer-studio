@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  * 
  * Complete list of developers available at our web site:
  * 
@@ -140,18 +140,12 @@ public class ParameterTypeDate extends ParameterTypeSingle {
 		return ret;
 	}
 
-	@Override
+	/**
+	 * @deprecated since 9.7, use {@link #toString(Object)} instead
+	 */
+	@Deprecated
 	public String toXMLString(Object value) {
-		if (value == null) {
-			return "";
-		}
-		String ret = null;
-		if (value instanceof Date) {
-			ret = DATE_FORMAT.get().format(value);
-		} else {
-			ret = String.valueOf(value);
-		}
-		return ret;
+		return toString(value);
 	}
 
 	public static Date getParameterAsDate(String key, Operator operator) throws UndefinedParameterError, UserError {

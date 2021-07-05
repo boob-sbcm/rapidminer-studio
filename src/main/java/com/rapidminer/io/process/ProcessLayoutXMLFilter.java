@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2001-2017 by RapidMiner and the contributors
+ * Copyright (C) 2001-2020 by RapidMiner and the contributors
  *
  * Complete list of developers available at our web site:
  *
@@ -24,14 +24,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
+import com.rapidminer.gui.flow.processrendering.draw.ProcessDrawUtils;
+import com.rapidminer.gui.flow.processrendering.draw.ProcessDrawer;
 import com.rapidminer.operator.ExecutionUnit;
 import com.rapidminer.operator.FlagUserData;
 import com.rapidminer.operator.Operator;
 import com.rapidminer.operator.OperatorChain;
 import com.rapidminer.operator.UserData;
 import com.rapidminer.operator.ports.Port;
+import com.rapidminer.operator.ports.Ports;
 
 
 /**
@@ -136,8 +140,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 
 		@Override
 		public UserData<Object> copyUserData(Object newParent) {
-			Point newPoint = new Point(point);
-			return new PointWrapper(newPoint);
+			return new PointWrapper(point != null ? new Point(point) : null);
 		}
 	}
 
@@ -212,7 +215,13 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 		String x = opElement.getAttribute(XML_ATTRIBUTE_X_POSITION);
 		String y = opElement.getAttribute(XML_ATTRIBUTE_Y_POSITION);
 		String w = opElement.getAttribute(XML_ATTRIBUTE_WIDTH);
+		if (w == null || w.isEmpty()) {
+			w = Double.toString(ProcessDrawer.OPERATOR_WIDTH);
+		}
 		String h = opElement.getAttribute(XML_ATTRIBUTE_HEIGHT);
+		if (h == null || h.isEmpty()) {
+			h = Double.toString(ProcessDrawUtils.calcHeighForOperator(op));
+		}
 		if (x != null && x.length() > 0) {
 			try {
 				Rectangle2D rect = new Rectangle2D.Double(Double.parseDouble(x), Double.parseDouble(y),
@@ -230,35 +239,35 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	@Override
 	public void executionUnitImported(final ExecutionUnit process, final Element element) {
 		NodeList children = element.getChildNodes();
-		for (Port port : process.getInnerSources().getAllPorts()) {
+		setPortSpacings(process.getInnerSources(), children, XML_ATTRIBUTE_SOURCE);
+		setPortSpacings(process.getInnerSinks(), children, XML_ATTRIBUTE_SINK);
+	}
+
+	/**
+	 * Extracts port spacings for the given {@link Ports} instance.
+	 *
+	 * @param ports
+	 * 		the ports to be spaced
+	 * @param children
+	 * 		the list of children to check
+	 * @since 8.2
+	 */
+	private void setPortSpacings(Ports<? > ports, NodeList children, String portPrefix) {
+		for (Port port : ports.getAllPorts()) {
 			for (int i = 0; i < children.getLength(); i++) {
-				if (children.item(i) instanceof Element
-						&& XML_TAG_PORT_SPACING.equals(((Element) children.item(i)).getTagName())) {
-					Element psElement = (Element) children.item(i);
-					if ((XML_ATTRIBUTE_SOURCE + port.getName()).equals(psElement.getAttribute(XML_ATTRIBUTE_PORT))) {
-						try {
-							setPortSpacing(port, Integer.parseInt(psElement.getAttribute(XML_ATTRIBUTE_SPACING)));
-						} catch (NumberFormatException e) {
-							// do nothing
-						}
-						break;
-					}
+				Node item = children.item(i);
+				if (!(item instanceof Element) || !XML_TAG_PORT_SPACING.equals(((Element) item).getTagName())) {
+					continue;
 				}
-			}
-		}
-		for (Port port : process.getInnerSinks().getAllPorts()) {
-			for (int i = 0; i < children.getLength(); i++) {
-				if (children.item(i) instanceof Element
-						&& XML_TAG_PORT_SPACING.equals(((Element) children.item(i)).getTagName())) {
-					Element psElement = (Element) children.item(i);
-					if ((XML_ATTRIBUTE_SINK + port.getName()).equals(psElement.getAttribute(XML_ATTRIBUTE_PORT))) {
-						try {
-							setPortSpacing(port, Integer.parseInt(psElement.getAttribute(XML_ATTRIBUTE_SPACING)));
-						} catch (NumberFormatException e) {
-							// do nothing
-						}
-						break;
+				Element psElement = (Element) item;
+				String portName = psElement.getAttribute(XML_ATTRIBUTE_PORT);
+				if ((portPrefix + port.getName()).equals(portName)) {
+					try {
+						setPortSpacing(port, Integer.parseInt(psElement.getAttribute(XML_ATTRIBUTE_SPACING)));
+					} catch (NumberFormatException e) {
+						// do nothing
 					}
+					break;
 				}
 			}
 		}
@@ -268,7 +277,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the spacing of the specified {@link Port}.
 	 *
 	 * @param port
-	 *            The port.
+	 * 		The port.
 	 * @return Additional spacing.
 	 */
 	public static int lookupPortSpacing(Port port) {
@@ -276,12 +285,8 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 		PortSpacingWrapper wrapper = (PortSpacingWrapper) operator.getUserData(KEY_PORT_SPACING);
 		if (wrapper != null) {
 			Map<Port, Integer> spacings = wrapper.get();
-			if (spacings.containsKey(port)) {
-				return spacings.get(port);
-			} else {
-				// no spacing stored for this particular port
-				return 0;
-			}
+			// get spacing or no spacing
+			return spacings.getOrDefault(port, 0);
 		} else {
 			// no spacing data available
 			return 0;
@@ -292,9 +297,9 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the spacing of the specified {@link Port}.
 	 *
 	 * @param port
-	 *            The port.
+	 * 		The port.
 	 * @param spacing
-	 *            The additional spacing.
+	 * 		The additional spacing.
 	 */
 	public static void setPortSpacing(Port port, Integer spacing) {
 		Operator operator = port.getPorts().getOwner().getOperator();
@@ -313,7 +318,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the spacing of the specified {@link Port}.
 	 *
 	 * @param port
-	 *            The port.
+	 * 		The port.
 	 */
 	public static void resetPortSpacing(Port port) {
 		Operator operator = port.getPorts().getOwner().getOperator();
@@ -328,7 +333,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the position rectangle of the specified {@link Operator}.
 	 *
 	 * @param operator
-	 *            The operator.
+	 * 		The operator.
 	 * @return The rectangle or null.
 	 */
 	public static Rectangle2D lookupOperatorRectangle(Operator operator) {
@@ -344,9 +349,9 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the position rectangle of the specified {@link Operator}.
 	 *
 	 * @param operator
-	 *            The operator.
+	 * 		The operator.
 	 * @param rect
-	 *            The rectangle.
+	 * 		The rectangle.
 	 */
 	public static void setOperatorRectangle(Operator operator, Rectangle2D rect) {
 		operator.setUserData(KEY_OPERATOR_RECTANGLE, new Rectangle2DWrapper(rect));
@@ -356,7 +361,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the position rectangle of the specified {@link Operator}.
 	 *
 	 * @param operator
-	 *            The operator.
+	 * 		The operator.
 	 */
 	public static void resetOperatorRectangle(Operator operator) {
 		operator.setUserData(KEY_OPERATOR_RECTANGLE, null);
@@ -366,7 +371,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the view position of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @return The position or null
 	 * @since 7.5
 	 */
@@ -383,9 +388,9 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the view position of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @param position
-	 *            The center position
+	 * 		The center position
 	 * @since 7.5
 	 */
 	public static void setOperatorChainPosition(OperatorChain operatorChain, Point position) {
@@ -396,7 +401,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the view position of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @since 7.5
 	 */
 	public static void resetOperatorChainPosition(OperatorChain operatorChain) {
@@ -407,7 +412,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the zoom of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @return The zoom or null
 	 * @since 7.5
 	 */
@@ -424,9 +429,9 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the zoom of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @param zoom
-	 *            The zoom
+	 * 		The zoom
 	 * @since 7.5
 	 */
 	public static void setOperatorChainZoom(OperatorChain operatorChain, Double zoom) {
@@ -437,7 +442,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the zoom of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @since 7.5
 	 */
 	public static void resetOperatorChainZoom(OperatorChain operatorChain) {
@@ -448,7 +453,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the scroll position of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @return The scroll position or null
 	 * @since 7.5
 	 */
@@ -465,9 +470,9 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the scroll position of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @param scrollPos
-	 *            The scroll position
+	 * 		The scroll position
 	 * @since 7.5
 	 */
 	public static void setScrollPosition(OperatorChain operatorChain, Point scrollPos) {
@@ -478,7 +483,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the scroll position of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @since 7.5
 	 */
 	public static void resetScrollPosition(OperatorChain operatorChain) {
@@ -489,7 +494,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the scroll process index of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @return The index or null
 	 * @since 7.5
 	 */
@@ -506,9 +511,9 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the scroll process index of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain
+	 * 		The operator chain
 	 * @param index
-	 *            The process index
+	 * 		The process index
 	 * @since 7.5
 	 */
 	public static void setScrollIndex(OperatorChain operatorChain, Double index) {
@@ -519,7 +524,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the scroll process index of the specified {@link OperatorChain}.
 	 *
 	 * @param operatorChain
-	 *            The operator chain.
+	 * 		The operator chain.
 	 * @since 7.5
 	 */
 	public static void resetScrollIndex(OperatorChain operatorChain) {
@@ -530,7 +535,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Looks up the restore flag of the specified {@link Operator}.
 	 *
 	 * @param operator
-	 *            the operator
+	 * 		the operator
 	 * @return the flag or null
 	 * @since 7.5
 	 */
@@ -543,7 +548,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Sets the restore flag of the specified {@link Operator}.
 	 *
 	 * @param operator
-	 *            the operator
+	 * 		the operator
 	 * @since 7.5
 	 */
 	public static void setRestore(Operator operator) {
@@ -554,7 +559,7 @@ public class ProcessLayoutXMLFilter implements ProcessXMLFilter {
 	 * Resets the restore flag of the specified {@link OperatorChain}.
 	 *
 	 * @param operator
-	 *            The operator
+	 * 		The operator
 	 * @since 7.5
 	 */
 	public static void resetRestore(Operator operator) {
